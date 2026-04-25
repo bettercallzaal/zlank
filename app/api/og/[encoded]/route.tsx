@@ -1,10 +1,14 @@
 import { ImageResponse } from 'next/og';
 import { NextRequest } from 'next/server';
-import { resolveSnap } from '@/lib/resolve-snap';
+import { decodeSnap } from '@/lib/encode';
 import type { SnapDoc } from '@/lib/blocks';
 
-// nodejs runtime - resolveSnap imports node-redis which is not edge-compatible.
-export const runtime = 'nodejs';
+// Edge runtime required by next/og's ImageResponse + satori.
+// For short IDs (KV-stored), fetch the Snap JSON from our same-origin
+// /api/snap/[id] endpoint which DOES use Redis (nodejs runtime). Edge runtime
+// can't import node-redis directly, so this internal fetch is the bridge.
+
+export const runtime = 'edge';
 
 const ACCENT_HEX: Record<SnapDoc['theme'], string> = {
   purple: '#a855f7',
@@ -22,17 +26,64 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
 };
 
+interface SnapJsonShape {
+  theme?: { accent?: SnapDoc['theme'] };
+  ui?: { elements?: Record<string, unknown> };
+}
+
+function isShortId(s: string): boolean {
+  return s.length <= 20 && /^[A-Za-z0-9_-]+$/.test(s);
+}
+
+async function loadDoc(req: NextRequest, encoded: string): Promise<SnapDoc | null> {
+  // Try base64 decode first (no network).
+  const direct = decodeSnap(encoded);
+  if (direct) return direct;
+
+  // Short ID - fetch from our own snap endpoint.
+  if (!isShortId(encoded)) return null;
+  try {
+    const url = new URL(req.url);
+    const snapUrl = `${url.protocol}//${url.host}/api/snap/${encoded}`;
+    const r = await fetch(snapUrl, {
+      headers: { Accept: 'application/vnd.farcaster.snap+json' },
+    });
+    if (!r.ok) return null;
+    const snap = (await r.json()) as SnapJsonShape;
+    // Reconstruct a minimal SnapDoc from the rendered Snap UI for OG purposes.
+    const elements = snap.ui?.elements ?? {};
+    let title = 'Snap';
+    let theme: SnapDoc['theme'] = snap.theme?.accent ?? 'purple';
+    let blockCount = 0;
+    for (const el of Object.values(elements)) {
+      const e = el as { type?: string; props?: { title?: string }; children?: string[] };
+      if (e.type === 'item' && e.props?.title && title === 'Snap') {
+        title = e.props.title;
+      }
+      if (e.type !== 'stack') blockCount++;
+    }
+    return {
+      version: 1,
+      title,
+      theme,
+      blocks: Array(blockCount).fill({ type: 'text', content: '' }) as SnapDoc['blocks'],
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   ctx: { params: Promise<{ encoded: string }> },
 ) {
   const { encoded } = await ctx.params;
-  const doc = await resolveSnap(encoded);
+  const doc = await loadDoc(req, encoded);
   const title = doc?.title ?? 'Snap not found';
   const accent = doc ? ACCENT_HEX[doc.theme] : ACCENT_HEX.gray;
   const blockCount = doc?.blocks.length ?? 0;
 
-  const image = new ImageResponse(
+  return new ImageResponse(
     (
       <div
         style={{
@@ -87,19 +138,9 @@ export async function GET(
     {
       width: 1200,
       height: 800,
+      headers: CORS_HEADERS,
     },
   );
-
-  // Re-emit with CORS headers + better cache
-  const buffer = await image.arrayBuffer();
-  return new Response(buffer, {
-    status: 200,
-    headers: {
-      'Content-Type': 'image/png',
-      'cache-control': 'public, max-age=300, s-maxage=600',
-      ...CORS_HEADERS,
-    },
-  });
 }
 
 export async function OPTIONS() {
