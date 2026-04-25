@@ -2,7 +2,16 @@
 // Each block represents one piece of a Snap. Builder UI maps to these,
 // renderer (lib/snap-spec.ts) maps these to Snap UI elements.
 
-export type BlockType = 'header' | 'text' | 'link' | 'share' | 'image' | 'divider';
+export type BlockType =
+  | 'header'
+  | 'text'
+  | 'link'
+  | 'share'
+  | 'image'
+  | 'divider'
+  | 'music'
+  | 'artist'
+  | 'poll';
 
 export interface HeaderBlock {
   type: 'header';
@@ -38,7 +47,35 @@ export interface DividerBlock {
   type: 'divider';
 }
 
-export type Block = HeaderBlock | TextBlock | LinkBlock | ShareBlock | ImageBlock | DividerBlock;
+export interface MusicBlock {
+  type: 'music';
+  url: string;
+  label: string;
+}
+
+export interface ArtistBlock {
+  type: 'artist';
+  fid: number;
+  displayName: string;
+  label: string;
+}
+
+export interface PollBlock {
+  type: 'poll';
+  question: string;
+  options: string[];
+}
+
+export type Block =
+  | HeaderBlock
+  | TextBlock
+  | LinkBlock
+  | ShareBlock
+  | ImageBlock
+  | DividerBlock
+  | MusicBlock
+  | ArtistBlock
+  | PollBlock;
 
 export interface SnapDoc {
   version: 1;
@@ -65,6 +102,22 @@ const LABEL_MAX = 30;
 const SUBTITLE_MAX = 160;
 const ALT_MAX = 100;
 const SHARE_TEXT_MAX = 1024;
+const QUESTION_MAX = 200;
+const OPTION_MAX = 60;
+const NAME_MAX = 60;
+const URL_MAX = 2048;
+
+function clampUrl(url: string): string {
+  return url.slice(0, URL_MAX);
+}
+
+function clampOptions(options: string[]): string[] {
+  const clamped = options.map((o) => o.slice(0, OPTION_MAX));
+  if (clamped.length < 2) {
+    while (clamped.length < 2) clamped.push(`Option ${clamped.length + 1}`);
+  }
+  return clamped.slice(0, 4);
+}
 
 export function clampBlock(block: Block): Block {
   switch (block.type) {
@@ -80,7 +133,7 @@ export function clampBlock(block: Block): Block {
       return {
         ...block,
         label: block.label.slice(0, LABEL_MAX),
-        url: block.url.slice(0, 2048),
+        url: clampUrl(block.url),
       };
     case 'share':
       return {
@@ -92,8 +145,28 @@ export function clampBlock(block: Block): Block {
       return {
         ...block,
         alt: block.alt.slice(0, ALT_MAX),
+        url: clampUrl(block.url),
       };
     case 'divider':
       return block;
+    case 'music':
+      return {
+        ...block,
+        label: block.label.slice(0, LABEL_MAX),
+        url: clampUrl(block.url),
+      };
+    case 'artist':
+      return {
+        ...block,
+        fid: Math.max(0, Math.floor(Number(block.fid) || 0)),
+        displayName: block.displayName.slice(0, NAME_MAX),
+        label: block.label.slice(0, LABEL_MAX),
+      };
+    case 'poll':
+      return {
+        ...block,
+        question: block.question.slice(0, QUESTION_MAX),
+        options: clampOptions(block.options),
+      };
   }
 }

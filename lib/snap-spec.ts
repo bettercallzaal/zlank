@@ -10,7 +10,11 @@ interface Element {
   on?: Record<string, unknown>;
 }
 
-function blockToElements(block: Block, idx: number, baseUrl: string): { ids: string[]; elements: Record<string, Element> } {
+function blockToElements(
+  block: Block,
+  idx: number,
+  baseUrl: string,
+): { ids: string[]; elements: Record<string, Element> } {
   const id = `b${idx}`;
   const elements: Record<string, Element> = {};
   const ids: string[] = [];
@@ -66,6 +70,60 @@ function blockToElements(block: Block, idx: number, baseUrl: string): { ids: str
     case 'divider': {
       elements[id] = { type: 'separator', props: {} };
       ids.push(id);
+      break;
+    }
+    case 'music': {
+      elements[id] = {
+        type: 'button',
+        props: { label: block.label || 'Listen', icon: 'play', variant: 'primary' },
+        on: { press: { action: 'open_url', params: { target: block.url } } },
+      };
+      ids.push(id);
+      break;
+    }
+    case 'artist': {
+      const itemId = `${id}_item`;
+      const btnId = `${id}_btn`;
+      elements[itemId] = {
+        type: 'item',
+        props: { title: block.displayName, description: 'Farcaster artist' },
+      };
+      elements[btnId] = {
+        type: 'button',
+        props: { label: block.label || 'View profile', icon: 'user', variant: 'primary' },
+        on: { press: { action: 'view_profile', params: { fid: block.fid } } },
+      };
+      ids.push(itemId, btnId);
+      break;
+    }
+    case 'poll': {
+      const qId = `${id}_q`;
+      const inputId = `${id}_input`;
+      const btnId = `${id}_btn`;
+      elements[qId] = {
+        type: 'text',
+        props: { content: block.question, size: 'md', weight: 'bold' },
+      };
+      elements[inputId] = {
+        type: 'input',
+        props: {
+          name: 'vote',
+          type: 'text',
+          label: 'Your vote',
+          placeholder: block.options.join(' / '),
+        },
+      };
+      elements[btnId] = {
+        type: 'button',
+        props: { label: 'Submit vote', variant: 'primary', icon: 'check' },
+        on: {
+          press: {
+            action: 'submit',
+            params: { target: baseUrl },
+          },
+        },
+      };
+      ids.push(qId, inputId, btnId);
       break;
     }
   }

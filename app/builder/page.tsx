@@ -12,6 +12,9 @@ const BLOCK_OPTIONS: { type: BlockType; label: string; icon: string }[] = [
   { type: 'link', label: 'Link button', icon: 'L' },
   { type: 'share', label: 'Share to feed', icon: 'S' },
   { type: 'image', label: 'Image', icon: 'I' },
+  { type: 'music', label: 'Music', icon: 'M' },
+  { type: 'artist', label: 'Artist', icon: 'A' },
+  { type: 'poll', label: 'Poll', icon: 'P' },
   { type: 'divider', label: 'Divider', icon: '-' },
 ];
 
@@ -26,9 +29,20 @@ function newBlock(type: BlockType): Block {
     case 'share':
       return { type: 'share', label: 'Share', text: 'Check out this Snap' };
     case 'image':
-      return { type: 'image', url: 'https://placehold.co/600x600/0a1628/f5a623.png', alt: 'image', aspect: '1:1' };
+      return {
+        type: 'image',
+        url: 'https://placehold.co/600x600/0a1628/f5a623.png',
+        alt: 'image',
+        aspect: '1:1',
+      };
     case 'divider':
       return { type: 'divider' };
+    case 'music':
+      return { type: 'music', url: 'https://open.spotify.com/track/', label: 'Listen' };
+    case 'artist':
+      return { type: 'artist', fid: 19640, displayName: 'New artist', label: 'View profile' };
+    case 'poll':
+      return { type: 'poll', question: 'What should we do next?', options: ['Option A', 'Option B'] };
   }
 }
 
@@ -343,8 +357,117 @@ function BlockEditor({
         </>
       )}
 
+      {block.type === 'music' && (
+        <>
+          <input
+            value={block.url}
+            onChange={(e) => onChange({ url: e.target.value } as Partial<Block>)}
+            placeholder="Spotify / Tortoise / SoundCloud / YouTube URL"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <input
+            value={block.label}
+            onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)}
+            placeholder="Button label (e.g. Listen)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+        </>
+      )}
+
+      {block.type === 'artist' && (
+        <>
+          <input
+            value={block.displayName}
+            onChange={(e) => onChange({ displayName: e.target.value } as Partial<Block>)}
+            placeholder="Display name"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <input
+            type="number"
+            value={block.fid}
+            onChange={(e) => onChange({ fid: Number(e.target.value) } as Partial<Block>)}
+            placeholder="Farcaster FID"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <input
+            value={block.label}
+            onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)}
+            placeholder="Button label (e.g. View profile)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+        </>
+      )}
+
+      {block.type === 'poll' && (
+        <PollEditor block={block} onChange={onChange} />
+      )}
+
       {block.type === 'divider' && <p className="text-xs text-[#8aa0bd]">Visual separator. No fields.</p>}
     </div>
+  );
+}
+
+function PollEditor({
+  block,
+  onChange,
+}: {
+  block: import('@/lib/blocks').PollBlock;
+  onChange: (patch: Partial<Block>) => void;
+}) {
+  function setOption(i: number, value: string) {
+    const next = [...block.options];
+    next[i] = value;
+    onChange({ options: next } as Partial<Block>);
+  }
+
+  function addOption() {
+    if (block.options.length >= 4) return;
+    onChange({ options: [...block.options, `Option ${block.options.length + 1}`] } as Partial<Block>);
+  }
+
+  function removeOption(i: number) {
+    if (block.options.length <= 2) return;
+    onChange({ options: block.options.filter((_, j) => j !== i) } as Partial<Block>);
+  }
+
+  return (
+    <>
+      <input
+        value={block.question}
+        onChange={(e) => onChange({ question: e.target.value } as Partial<Block>)}
+        placeholder="Poll question"
+        className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+      />
+      <div className="space-y-1">
+        {block.options.map((opt, i) => (
+          <div key={i} className="flex gap-1">
+            <input
+              value={opt}
+              onChange={(e) => setOption(i, e.target.value)}
+              placeholder={`Option ${i + 1}`}
+              className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+            {block.options.length > 2 && (
+              <button
+                onClick={() => removeOption(i)}
+                className="px-2 text-xs text-red-400 hover:bg-red-900 rounded"
+              >
+                x
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      {block.options.length < 4 && (
+        <button
+          onClick={addOption}
+          className="text-xs text-[#f5a623] hover:underline"
+        >
+          + add option
+        </button>
+      )}
+      <p className="text-xs text-[#8aa0bd]">v1: vote tallying ships in v0.5 with DB.</p>
+    </>
   );
 }
 
@@ -386,6 +509,34 @@ function BlockPreview({ block, theme }: { block: Block; theme: SnapDoc['theme'] 
   }
   if (block.type === 'divider') {
     return <hr className="border-[#1f3252]" />;
+  }
+  if (block.type === 'music') {
+    return (
+      <div className="bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 flex items-center gap-2" style={{ color: accent }}>
+        <span className="font-bold">[MUSIC]</span>
+        <span className="text-sm">{block.label}</span>
+      </div>
+    );
+  }
+  if (block.type === 'artist') {
+    return (
+      <div className="bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 space-y-1">
+        <div className="font-medium" style={{ color: accent }}>{block.displayName}</div>
+        <div className="text-xs text-[#8aa0bd]">FID {block.fid} - {block.label}</div>
+      </div>
+    );
+  }
+  if (block.type === 'poll') {
+    return (
+      <div className="bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 space-y-2">
+        <div className="font-bold text-sm">{block.question}</div>
+        <ul className="text-xs text-[#8aa0bd] space-y-1">
+          {block.options.map((opt, i) => (
+            <li key={i}>- {opt}</li>
+          ))}
+        </ul>
+      </div>
+    );
   }
   return null;
 }
