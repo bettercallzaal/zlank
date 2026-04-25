@@ -5,6 +5,13 @@ import type { SnapDoc } from '@/lib/blocks';
 
 export const runtime = 'nodejs';
 
+// Content negotiation: Snap-aware Farcaster clients request this URL with
+// Accept: application/vnd.farcaster.snap+json -> we return Snap JSON inline.
+// Other clients (browsers, older FC) get HTML with fc:miniapp meta tag for
+// Mini App embed fallback (image + Open button -> webview viewer).
+
+const SNAP_MEDIA_TYPE = 'application/vnd.farcaster.snap+json';
+
 const FALLBACK_DOC: SnapDoc = {
   version: 1,
   title: 'Snap not found',
@@ -28,17 +35,23 @@ async function getEncoded(ctx: { params: Promise<{ encoded: string }> }): Promis
   return encoded;
 }
 
-export async function GET(
-  req: NextRequest,
-  ctx: { params: Promise<{ encoded: string }> },
-) {
-  const encoded = await getEncoded(ctx);
-  const doc = decodeSnap(encoded) ?? FALLBACK_DOC;
-  const origin = getOrigin(req);
+function snapJsonResponse(doc: SnapDoc, origin: string, encoded: string): NextResponse {
+  const snap = docToSnap(doc, `${origin}/api/snap/${encoded}`);
+  const linkHeader =
+    `</api/snap/${encoded}>; rel="alternate"; type="${SNAP_MEDIA_TYPE}", ` +
+    `</api/snap/${encoded}>; rel="alternate"; type="text/html"`;
+  return new NextResponse(JSON.stringify(snap), {
+    status: 200,
+    headers: {
+      'Content-Type': `${SNAP_MEDIA_TYPE}; charset=utf-8`,
+      Vary: 'Accept',
+      Link: linkHeader,
+      'cache-control': 'public, max-age=60, s-maxage=300',
+    },
+  });
+}
 
-  // Farcaster clients (Warpcast / Farcaster.xyz / Base) detect the cast embed
-  // via the fc:miniapp meta tag. The action.url points to /s/[encoded] which
-  // is the visual viewer page that opens in the Mini App webview.
+function htmlResponse(doc: SnapDoc, origin: string, encoded: string): NextResponse {
   const viewerUrl = `${origin}/s/${encoded}`;
   const imageUrl = `${origin}/api/og/${encoded}`;
   const splashUrl = `${origin}/splash.png`;
@@ -58,6 +71,10 @@ export async function GET(
     },
   };
 
+  const linkHeader =
+    `</api/snap/${encoded}>; rel="alternate"; type="${SNAP_MEDIA_TYPE}", ` +
+    `</api/snap/${encoded}>; rel="alternate"; type="text/html"`;
+
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -73,6 +90,7 @@ export async function GET(
 <meta property="og:type" content="website" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:image" content="${imageUrl}" />
+<link rel="alternate" type="${SNAP_MEDIA_TYPE}" href="${origin}/api/snap/${encoded}" />
 </head>
 <body style="background:#0a1628;color:#e8eef7;font-family:-apple-system,sans-serif;padding:40px;text-align:center;">
 <h1 style="color:#f5a623;">${escapeHtml(doc.title)}</h1>
@@ -85,9 +103,28 @@ export async function GET(
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
+      Vary: 'Accept',
+      Link: linkHeader,
       'cache-control': 'public, max-age=60, s-maxage=300',
     },
   });
+}
+
+export async function GET(
+  req: NextRequest,
+  ctx: { params: Promise<{ encoded: string }> },
+) {
+  const encoded = await getEncoded(ctx);
+  const doc = decodeSnap(encoded) ?? FALLBACK_DOC;
+  const origin = getOrigin(req);
+
+  // Content negotiation: Snap-aware clients ask for the snap media type.
+  const accept = req.headers.get('accept') ?? '';
+  if (accept.includes(SNAP_MEDIA_TYPE) || accept.includes('vnd.farcaster.snap')) {
+    return snapJsonResponse(doc, origin, encoded);
+  }
+
+  return htmlResponse(doc, origin, encoded);
 }
 
 export async function POST(
@@ -97,14 +134,7 @@ export async function POST(
   const encoded = await getEncoded(ctx);
   const doc = decodeSnap(encoded) ?? FALLBACK_DOC;
   const origin = getOrigin(req);
-  const viewerUrl = `${origin}/api/snap/${encoded}`;
-  const snap = docToSnap(doc, viewerUrl);
-  return NextResponse.json(snap, {
-    headers: {
-      'Content-Type': 'application/json',
-      'cache-control': 'public, max-age=60, s-maxage=300',
-    },
-  });
+  return snapJsonResponse(doc, origin, encoded);
 }
 
 function escapeHtml(s: string): string {
