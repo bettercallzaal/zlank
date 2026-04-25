@@ -61,7 +61,10 @@ function snapJsonResponse(doc: SnapDoc, origin: string, encoded: string): NextRe
 
 function htmlResponse(doc: SnapDoc, origin: string, encoded: string): NextResponse {
   const viewerUrl = `${origin}/s/${encoded}`;
-  const imageUrl = `${origin}/api/og/${encoded}`;
+  // Static placeholder until next/og works on edge in Next 16 + Turbopack.
+  // Encodes the snap title into the placehold.co URL for a quick visual.
+  const titleSlug = encodeURIComponent(doc.title.slice(0, 40) || 'Zlank Snap');
+  const imageUrl = `https://placehold.co/1200x800/0a1628/f5a623/png?text=${titleSlug}&font=Roboto`;
   const splashUrl = `${origin}/splash.png`;
 
   const embed = {
