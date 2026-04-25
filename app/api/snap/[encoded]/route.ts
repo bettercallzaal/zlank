@@ -35,6 +35,13 @@ async function getEncoded(ctx: { params: Promise<{ encoded: string }> }): Promis
   return encoded;
 }
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Accept',
+  'Access-Control-Expose-Headers': 'Link, Vary, Content-Type',
+};
+
 function snapJsonResponse(doc: SnapDoc, origin: string, encoded: string): NextResponse {
   const snap = docToSnap(doc, `${origin}/api/snap/${encoded}`);
   const linkHeader =
@@ -47,6 +54,7 @@ function snapJsonResponse(doc: SnapDoc, origin: string, encoded: string): NextRe
       Vary: 'Accept',
       Link: linkHeader,
       'cache-control': 'public, max-age=60, s-maxage=300',
+      ...CORS_HEADERS,
     },
   });
 }
@@ -106,7 +114,15 @@ function htmlResponse(doc: SnapDoc, origin: string, encoded: string): NextRespon
       Vary: 'Accept',
       Link: linkHeader,
       'cache-control': 'public, max-age=60, s-maxage=300',
+      ...CORS_HEADERS,
     },
+  });
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: CORS_HEADERS,
   });
 }
 
