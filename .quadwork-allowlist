@@ -1,0 +1,8 @@
+app/builder/**
+app/api/**
+app/s/**
+lib/**
+README.md
+tests/**
+public/**
+.well-known/**
