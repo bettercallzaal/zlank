@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { decodeSnap } from '@/lib/encode';
+import { resolveSnap } from '@/lib/resolve-snap';
 import { docToSnap } from '@/lib/snap-spec';
 import type { SnapDoc } from '@/lib/blocks';
 
@@ -115,7 +115,7 @@ export async function GET(
   ctx: { params: Promise<{ encoded: string }> },
 ) {
   const encoded = await getEncoded(ctx);
-  const doc = decodeSnap(encoded) ?? FALLBACK_DOC;
+  const doc = (await resolveSnap(encoded)) ?? FALLBACK_DOC;
   const origin = getOrigin(req);
 
   // Content negotiation: Snap-aware clients ask for the snap media type.
@@ -132,7 +132,7 @@ export async function POST(
   ctx: { params: Promise<{ encoded: string }> },
 ) {
   const encoded = await getEncoded(ctx);
-  const doc = decodeSnap(encoded) ?? FALLBACK_DOC;
+  const doc = (await resolveSnap(encoded)) ?? FALLBACK_DOC;
   const origin = getOrigin(req);
   return snapJsonResponse(doc, origin, encoded);
 }

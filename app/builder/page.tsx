@@ -89,9 +89,36 @@ export default function Builder() {
     });
   }
 
-  function deploy() {
-    const encoded = encodeSnap(doc);
-    setDeployed(encoded);
+  const [deploying, setDeploying] = useState(false);
+  const [deployErr, setDeployErr] = useState<string | null>(null);
+
+  async function deploy() {
+    setDeploying(true);
+    setDeployErr(null);
+    try {
+      const res = await fetch('/api/snaps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doc }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as { id: string; short: boolean };
+      setDeployed(data.id);
+    } catch (err: unknown) {
+      // Fall back to URL-encode locally if API call fails
+      try {
+        const encoded = encodeSnap(doc);
+        setDeployed(encoded);
+        setDeployErr(err instanceof Error ? err.message : 'Saved locally only');
+      } catch (fallbackErr: unknown) {
+        setDeployErr(fallbackErr instanceof Error ? fallbackErr.message : 'Deploy failed');
+      }
+    } finally {
+      setDeploying(false);
+    }
   }
 
   async function shareToFeed() {
@@ -128,9 +155,10 @@ export default function Builder() {
           {!deployed ? (
             <button
               onClick={deploy}
-              className="bg-[#f5a623] text-[#0a1628] font-bold px-5 py-2 rounded-md hover:bg-[#ffc14d] transition"
+              disabled={deploying}
+              className="bg-[#f5a623] text-[#0a1628] font-bold px-5 py-2 rounded-md hover:bg-[#ffc14d] transition disabled:opacity-60"
             >
-              Deploy
+              {deploying ? 'Deploying...' : 'Deploy'}
             </button>
           ) : (
             <>
@@ -224,11 +252,14 @@ export default function Builder() {
             <div className="mt-6 p-4 bg-[#122440] border border-[#f5a623] rounded-lg space-y-2">
               <p className="text-sm text-[#8aa0bd]">Deployed. Snap is live at:</p>
               <code className="block text-xs bg-[#0a1628] p-2 rounded break-all">
-                /api/snap/{deployed.slice(0, 60)}...
+                /api/snap/{deployed.length <= 20 ? deployed : `${deployed.slice(0, 60)}...`}
               </code>
               <p className="text-xs text-[#8aa0bd]">
                 Hit Share to feed (top right) to drop it in a cast.
               </p>
+              {deployErr && (
+                <p className="text-xs text-amber-400">Note: {deployErr}</p>
+              )}
             </div>
           )}
         </section>

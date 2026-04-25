@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { decodeSnap } from '@/lib/encode';
+import { resolveSnap } from '@/lib/resolve-snap';
 import type { Block, SnapDoc } from '@/lib/blocks';
 import type { Metadata } from 'next';
 
@@ -20,7 +20,7 @@ const FALLBACK: SnapDoc = {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { encoded } = await params;
-  const doc = decodeSnap(encoded) ?? FALLBACK;
+  const doc = (await resolveSnap(encoded)) ?? FALLBACK;
   return {
     title: `${doc.title} - Zlank`,
     description: 'A Farcaster Snap built with Zlank',
@@ -40,7 +40,7 @@ const ACCENT_HEX: Record<SnapDoc['theme'], string> = {
 
 export default async function SnapViewer({ params }: PageProps) {
   const { encoded } = await params;
-  const doc = decodeSnap(encoded) ?? FALLBACK;
+  const doc = (await resolveSnap(encoded)) ?? FALLBACK;
   const accent = ACCENT_HEX[doc.theme];
 
   return (
