@@ -1,9 +1,10 @@
 import { ImageResponse } from 'next/og';
 import { NextRequest } from 'next/server';
-import { decodeSnap } from '@/lib/encode';
+import { resolveSnap } from '@/lib/resolve-snap';
 import type { SnapDoc } from '@/lib/blocks';
 
-export const runtime = 'edge';
+// nodejs runtime - resolveSnap imports node-redis which is not edge-compatible.
+export const runtime = 'nodejs';
 
 const ACCENT_HEX: Record<SnapDoc['theme'], string> = {
   purple: '#a855f7',
@@ -16,17 +17,22 @@ const ACCENT_HEX: Record<SnapDoc['theme'], string> = {
   gray: '#94a3b8',
 };
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+};
+
 export async function GET(
   _req: NextRequest,
   ctx: { params: Promise<{ encoded: string }> },
 ) {
   const { encoded } = await ctx.params;
-  const doc = decodeSnap(encoded);
+  const doc = await resolveSnap(encoded);
   const title = doc?.title ?? 'Snap not found';
   const accent = doc ? ACCENT_HEX[doc.theme] : ACCENT_HEX.gray;
   const blockCount = doc?.blocks.length ?? 0;
 
-  return new ImageResponse(
+  const image = new ImageResponse(
     (
       <div
         style={{
@@ -83,4 +89,22 @@ export async function GET(
       height: 800,
     },
   );
+
+  // Re-emit with CORS headers + better cache
+  const buffer = await image.arrayBuffer();
+  return new Response(buffer, {
+    status: 200,
+    headers: {
+      'Content-Type': 'image/png',
+      'cache-control': 'public, max-age=300, s-maxage=600',
+      ...CORS_HEADERS,
+    },
+  });
+}
+
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 204,
+    headers: CORS_HEADERS,
+  });
 }
