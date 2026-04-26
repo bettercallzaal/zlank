@@ -61,51 +61,41 @@ function snapJsonResponse(doc: SnapDoc, origin: string, encoded: string): NextRe
 
 function htmlResponse(doc: SnapDoc, origin: string, encoded: string): NextResponse {
   const viewerUrl = `${origin}/s/${encoded}`;
-  // Static placeholder until next/og works on edge in Next 16 + Turbopack.
-  // Encodes the snap title into the placehold.co URL for a quick visual.
   const titleSlug = encodeURIComponent(doc.title.slice(0, 40) || 'Zlank Snap');
   const imageUrl = `https://placehold.co/1200x800/0a1628/f5a623/png?text=${titleSlug}&font=Roboto`;
-  const splashUrl = `${origin}/splash.png`;
+  const snapUrl = `${origin}/api/snap/${encoded}`;
 
-  const embed = {
-    version: '1',
-    imageUrl,
-    button: {
-      title: doc.title.slice(0, 32) || 'Open Snap',
-      action: {
-        type: 'launch_miniapp',
-        name: 'Zlank',
-        url: viewerUrl,
-        splashImageUrl: splashUrl,
-        splashBackgroundColor: '#0a1628',
-      },
-    },
-  };
-
+  // CRITICAL: NO fc:miniapp or fc:frame meta tags. Their presence forces
+  // Farcaster client to render as Mini App embed (image+button) instead of
+  // inline Snap. The Link header alternate is the canonical Snap discovery
+  // mechanism (matches duodo-snap working pattern).
   const linkHeader =
-    `</api/snap/${encoded}>; rel="alternate"; type="${SNAP_MEDIA_TYPE}", ` +
-    `</api/snap/${encoded}>; rel="alternate"; type="text/html"`;
+    `<${snapUrl}>; rel="alternate"; type="${SNAP_MEDIA_TYPE}", ` +
+    `<${snapUrl}>; rel="alternate"; type="text/html"`;
 
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${escapeHtml(doc.title)} - Zlank</title>
+<title>${escapeHtml(doc.title)}</title>
 <meta name="description" content="A Farcaster Snap built with Zlank" />
-<meta name="fc:miniapp" content='${JSON.stringify(embed)}' />
-<meta name="fc:frame" content='${JSON.stringify(embed)}' />
 <meta property="og:title" content="${escapeHtml(doc.title)}" />
 <meta property="og:description" content="A Farcaster Snap built with Zlank" />
-<meta property="og:image" content="${imageUrl}" />
+<meta property="og:url" content="${snapUrl}" />
 <meta property="og:type" content="website" />
+<meta property="og:locale" content="en_US" />
+<meta property="og:image" content="${imageUrl}" />
+<meta property="og:image:alt" content="${escapeHtml(doc.title)}" />
 <meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="${escapeHtml(doc.title)}" />
+<meta name="twitter:description" content="A Farcaster Snap built with Zlank" />
 <meta name="twitter:image" content="${imageUrl}" />
-<link rel="alternate" type="${SNAP_MEDIA_TYPE}" href="${origin}/api/snap/${encoded}" />
+<link rel="alternate" type="${SNAP_MEDIA_TYPE}" href="${snapUrl}" />
 </head>
 <body style="background:#0a1628;color:#e8eef7;font-family:-apple-system,sans-serif;padding:40px;text-align:center;">
 <h1 style="color:#f5a623;">${escapeHtml(doc.title)}</h1>
-<p>This is a Farcaster Snap. <a href="${viewerUrl}" style="color:#f5a623;">Open in browser</a> or share in a Farcaster cast to render in feed.</p>
+<p>This is a Farcaster Snap. <a href="${viewerUrl}" style="color:#f5a623;">Open in browser</a> or share in a Farcaster cast to render inline.</p>
 <p><a href="${origin}" style="color:#8aa0bd;">Build your own at Zlank</a></p>
 </body>
 </html>`;
