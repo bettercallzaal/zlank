@@ -253,7 +253,16 @@ export default function Builder() {
         body: JSON.stringify({ doc }),
       });
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          issues?: string[];
+        };
+        // Validation errors (400 w/ issues): surface them, do NOT silently
+        // fall back to URL-encode - that would hide an invalid Snap.
+        if (res.status === 400 && Array.isArray(data.issues) && data.issues.length > 0) {
+          setDeployErr(`Snap won't render. Fix:\n- ${data.issues.join('\n- ')}`);
+          return;
+        }
         throw new Error(data.error ?? `HTTP ${res.status}`);
       }
       const data = (await res.json()) as { id: string; short: boolean };
@@ -270,7 +279,7 @@ export default function Builder() {
         updatedAt: Date.now(),
       });
     } catch (err: unknown) {
-      // Fall back to URL-encode locally if API call fails
+      // Network / server error - fall back to URL-encode locally
       try {
         const encoded = encodeSnap(doc);
         setDeployed(encoded);

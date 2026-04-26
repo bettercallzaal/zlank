@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isKvAvailable, saveSnap } from '@/lib/kv';
 import { encodeSnap } from '@/lib/encode';
+import { validateDoc } from '@/lib/validate-snap';
 import type { SnapDoc } from '@/lib/blocks';
 
 export const runtime = 'nodejs';
@@ -28,6 +29,22 @@ export async function POST(req: NextRequest) {
 
   if (!body || !isSnapDoc(body.doc)) {
     return NextResponse.json({ error: 'doc field missing or invalid' }, { status: 400 });
+  }
+
+  // Preflight: validate the rendered Snap UI for every page against the
+  // @farcaster/snap envelope schema + json-render catalog. If the doc would
+  // produce an invalid Snap (bad icon name, button label too long, etc.),
+  // reject before storing so the user fixes it now instead of after a cast.
+  const validation = validateDoc(body.doc);
+  if (!validation.ok) {
+    return NextResponse.json(
+      {
+        error: 'Snap validation failed',
+        issues: validation.errors,
+        pages: validation.pages,
+      },
+      { status: 400 },
+    );
   }
 
   if (!isKvAvailable()) {
