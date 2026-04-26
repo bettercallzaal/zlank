@@ -193,5 +193,35 @@ function BlockView({ block, accent, encoded }: { block: Block; accent: string; e
           <p className="text-xs text-[#8aa0bd]">Vote tallying ships in v0.5 with DB.</p>
         </div>
       );
+    case 'progress': {
+      const pct = Math.min(100, (block.value / Math.max(1, block.max)) * 100);
+      return (
+        <div className="space-y-2">
+          <div className="text-sm">{block.label}</div>
+          <div className="h-3 bg-[#1f3252] rounded">
+            <div className="h-full rounded transition-all" style={{ width: `${pct}%`, background: accent }} />
+          </div>
+          <div className="text-xs text-[#8aa0bd]">{block.value} / {block.max}</div>
+        </div>
+      );
+    }
+    case 'slider':
+      return (
+        <div className="space-y-2 bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3">
+          <div className="text-sm">{block.label}: {block.defaultValue}</div>
+          <input type="range" min={block.min} max={block.max} defaultValue={block.defaultValue} className="w-full" style={{ accentColor: accent }} />
+          <div className="flex justify-between text-xs text-[#8aa0bd]">
+            <span>{block.min}</span>
+            <span>{block.max}</span>
+          </div>
+        </div>
+      );
+    case 'switch':
+      return (
+        <label className="flex items-center justify-between bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3 cursor-pointer">
+          <span className="text-sm">{block.label}</span>
+          <input type="checkbox" defaultChecked={block.defaultChecked} style={{ accentColor: accent }} />
+        </label>
+      );
   }
 }
