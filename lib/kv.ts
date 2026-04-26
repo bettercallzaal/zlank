@@ -58,13 +58,43 @@ export async function saveSnap(doc: SnapDoc): Promise<string> {
   return id;
 }
 
+function migrateLoadedDoc(raw: unknown): SnapDoc | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const d = raw as Record<string, unknown>;
+  if (d.version !== 1 || typeof d.title !== 'string') return null;
+
+  // Old single-page format: has blocks array on root
+  if (Array.isArray(d.blocks)) {
+    return {
+      version: 1,
+      title: d.title,
+      theme: (d.theme as SnapDoc['theme']) ?? 'purple',
+      pages: [{ id: 'home', blocks: d.blocks as SnapDoc['pages'][number]['blocks'] }],
+      confetti: d.confetti as boolean | undefined,
+    };
+  }
+
+  // New multi-page format
+  if (Array.isArray(d.pages)) {
+    return {
+      version: 1,
+      title: d.title,
+      theme: (d.theme as SnapDoc['theme']) ?? 'purple',
+      pages: d.pages as SnapDoc['pages'],
+      confetti: d.confetti as boolean | undefined,
+    };
+  }
+
+  return null;
+}
+
 export async function loadSnap(id: string): Promise<SnapDoc | null> {
   const c = await getClient();
   if (!c) return null;
   const raw = await c.get(KEY_PREFIX + id);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as SnapDoc;
+    return migrateLoadedDoc(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -76,7 +106,7 @@ export async function loadSnapDoc(id: string): Promise<SnapDoc | null> {
   const raw = await c.get(SNAPDOC_PREFIX + id);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as SnapDoc;
+    return migrateLoadedDoc(JSON.parse(raw));
   } catch {
     return null;
   }
