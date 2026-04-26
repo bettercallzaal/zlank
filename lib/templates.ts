@@ -320,6 +320,80 @@ export const TEMPLATES: TemplateMeta[] = [
       ],
     },
   },
+  {
+    id: 'idea-box',
+    name: 'Idea Box',
+    description: 'Chatbot collects what people are building. Replies inline. Logs every entry.',
+    doc: {
+      version: 1,
+      title: 'What are you building?',
+      theme: 'purple',
+      pages: [
+        {
+          id: 'home',
+          blocks: [
+            {
+              type: 'header',
+              title: 'Tell me what you are building',
+              subtitle: 'Reply comes back inline. Logged for the creator.',
+              badgeText: 'IDEAS',
+              badgeColor: 'purple',
+            },
+            {
+              type: 'chatbot',
+              title: 'Builder chat',
+              prompt: 'What are you working on right now?',
+              systemPrompt:
+                'You are a friendly product coach. Reply briefly (max 2 sentences) and ask one curious follow-up about what they are making. Be concrete.',
+              label: 'Send',
+              placeholder: 'Type your idea...',
+            },
+            { type: 'divider' },
+            {
+              type: 'text',
+              content: 'Read the log: zlank.online/api/chat-log/{snap-id}',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: 'bug-report',
+    name: 'Bug Report',
+    description: 'Feedback block tagging the creator with a structured prefix.',
+    doc: {
+      version: 1,
+      title: 'Bug report',
+      theme: 'red',
+      pages: [
+        {
+          id: 'home',
+          blocks: [
+            {
+              type: 'header',
+              title: 'Found a bug?',
+              subtitle: 'Tell us what broke. One tap to send.',
+              badgeText: 'BUGS',
+              badgeColor: 'red',
+            },
+            {
+              type: 'feedback',
+              label: 'Send bug report',
+              prompt: 'Describe the bug + how to reproduce it',
+              mention: 'zaal',
+              prefix: 'bug for zlank:',
+            },
+            { type: 'divider' },
+            {
+              type: 'text',
+              content: 'Tagged @zaal. Composer opens pre-filled - review and send.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];
 
 export function getTemplateById(id: string): TemplateMeta | undefined {
