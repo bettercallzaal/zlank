@@ -250,7 +250,7 @@ export function docToSnap(doc: SnapDoc, baseUrl: string, pageId?: string) {
     try {
       return new URL(baseUrl).origin;
     } catch {
-      return 'https://zlank.vercel.app';
+      return 'https://zlank.online';
     }
   })();
   allElements['_zlank_sep'] = { type: 'separator', props: {} };

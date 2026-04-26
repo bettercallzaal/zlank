@@ -2,7 +2,7 @@
 
 No-code builder for Farcaster Snaps. Stack blocks. Hit Deploy. Share to feed.
 
-Live: [zlank.vercel.app](https://zlank.vercel.app)
+Live: [zlank.online](https://zlank.online)
 
 ## What it does
 
@@ -11,7 +11,7 @@ Build interactive in-feed Farcaster Snaps without writing code:
 1. Open the builder
 2. Pick blocks (header, text, link, music, artist, poll, bar chart, toggle, share, image, divider)
 3. Edit fields inline with a live preview
-4. Hit Deploy - your Snap goes live at `zlank.vercel.app/api/snap/<6-char-id>`
+4. Hit Deploy - your Snap goes live at `zlank.online/api/snap/<6-char-id>`
 5. Share to feed - drops it as a cast embed, renders inline in Snap-aware Farcaster clients
 
 Same URL serves:

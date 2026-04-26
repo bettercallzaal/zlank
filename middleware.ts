@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const SNAP_MEDIA_TYPE = 'application/vnd.farcaster.snap+json';
 
 // Make the homepage self-demonstrating: when a Snap-aware Farcaster client
-// fetches zlank.vercel.app with Accept: application/vnd.farcaster.snap+json,
+// fetches zlank.online with Accept: application/vnd.farcaster.snap+json,
 // rewrite to /api/snap/zlank which returns the Zlank promo Snap. Browsers
 // (Accept: text/html) continue to the React landing page.
 
