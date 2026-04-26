@@ -172,6 +172,48 @@ export async function appendChatLog(
   await c.expire(key, 60 * 60 * 24 * 90);
 }
 
+const STATS_PREFIX = 'stats:';
+
+export interface SnapStats {
+  views: number;
+  interactions: number;
+  lastViewAt: number | null;
+  lastInteractionAt: number | null;
+}
+
+export async function bumpStat(
+  snapId: string,
+  field: 'views' | 'interactions',
+): Promise<void> {
+  const c = await getClient();
+  if (!c) return;
+  const key = STATS_PREFIX + snapId;
+  const tsField = field === 'views' ? 'lastViewAt' : 'lastInteractionAt';
+  await Promise.all([
+    c.hIncrBy(key, field, 1),
+    c.hSet(key, tsField, String(Date.now())),
+    c.expire(key, 60 * 60 * 24 * 365),
+  ]);
+}
+
+export async function getStats(snapId: string): Promise<SnapStats> {
+  const c = await getClient();
+  const empty: SnapStats = {
+    views: 0,
+    interactions: 0,
+    lastViewAt: null,
+    lastInteractionAt: null,
+  };
+  if (!c) return empty;
+  const raw = await c.hGetAll(STATS_PREFIX + snapId);
+  return {
+    views: Number(raw.views ?? 0),
+    interactions: Number(raw.interactions ?? 0),
+    lastViewAt: raw.lastViewAt ? Number(raw.lastViewAt) : null,
+    lastInteractionAt: raw.lastInteractionAt ? Number(raw.lastInteractionAt) : null,
+  };
+}
+
 export async function getChatLog(
   snapId: string,
   limit = 50,

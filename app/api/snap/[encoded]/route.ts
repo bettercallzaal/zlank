@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { parseRequest } from '@farcaster/snap/server';
 import { resolveSnap } from '@/lib/resolve-snap';
 import { docToSnap } from '@/lib/snap-spec';
-import { recordVote, appendChatLog } from '@/lib/kv';
+import { recordVote, appendChatLog, bumpStat } from '@/lib/kv';
 import { evaluateGates, isGateRule, type GateResult } from '@/lib/gates';
 import { chat as llmChat } from '@/lib/llm';
 import type { SnapDoc, Block, ChartBar } from '@/lib/blocks';
@@ -167,7 +167,8 @@ export async function GET(
   // Content negotiation: Snap-aware clients ask for the snap media type.
   const accept = req.headers.get('accept') ?? '';
   if (accept.includes(SNAP_MEDIA_TYPE) || accept.includes('vnd.farcaster.snap')) {
-    // GET has no FID; gated blocks render as locked stubs.
+    // Fire-and-forget view counter (don't block render on Redis).
+    void bumpStat(encoded, 'views');
     const gateResults = await resolveGatesForPage(doc, pageId, undefined);
     return snapJsonResponse(doc, origin, encoded, pageId, gateResults);
   }
@@ -296,6 +297,9 @@ export async function POST(
   if (Object.keys(inputs).length > 0) {
     return snapJsonResponse(buildAckDoc(doc, inputs), origin, encoded, pageId);
   }
+
+  // Any POST counts as an interaction (submit, vote, gate unlock, chat, etc).
+  void bumpStat(encoded, 'interactions');
 
   // Bare submit (e.g. Unlock button on a gated block) - re-render with gates
   // evaluated against the now-known FID.
