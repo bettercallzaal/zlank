@@ -3,18 +3,28 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { sdk } from '@farcaster/miniapp-sdk';
-import { DEFAULT_SNAP, clampBlock, type SnapDoc, type Block, type BlockType } from '@/lib/blocks';
+import {
+  DEFAULT_SNAP,
+  clampBlock,
+  ICONS,
+  type SnapDoc,
+  type Block,
+  type BlockType,
+  type IconName,
+} from '@/lib/blocks';
 import { encodeSnap } from '@/lib/encode';
 
 const BLOCK_OPTIONS: { type: BlockType; label: string; icon: string }[] = [
   { type: 'header', label: 'Header', icon: 'H' },
   { type: 'text', label: 'Text', icon: 'T' },
-  { type: 'link', label: 'Link button', icon: 'L' },
-  { type: 'share', label: 'Share to feed', icon: 'S' },
+  { type: 'link', label: 'Link', icon: 'L' },
+  { type: 'share', label: 'Share', icon: 'S' },
   { type: 'image', label: 'Image', icon: 'I' },
   { type: 'music', label: 'Music', icon: 'M' },
   { type: 'artist', label: 'Artist', icon: 'A' },
   { type: 'poll', label: 'Poll', icon: 'P' },
+  { type: 'chart', label: 'Bar chart', icon: 'C' },
+  { type: 'toggle', label: 'Toggle', icon: 'G' },
   { type: 'divider', label: 'Divider', icon: '-' },
 ];
 
@@ -25,9 +35,15 @@ function newBlock(type: BlockType): Block {
     case 'text':
       return { type: 'text', content: 'New text block. Edit me.' };
     case 'link':
-      return { type: 'link', label: 'Open link', url: 'https://farcaster.xyz' };
+      return {
+        type: 'link',
+        label: 'Open link',
+        url: 'https://farcaster.xyz',
+        icon: 'external-link',
+        variant: 'primary',
+      };
     case 'share':
-      return { type: 'share', label: 'Share', text: 'Check out this Snap' };
+      return { type: 'share', label: 'Share', text: 'Check out this Snap', icon: 'share' };
     case 'image':
       return {
         type: 'image',
@@ -38,11 +54,28 @@ function newBlock(type: BlockType): Block {
     case 'divider':
       return { type: 'divider' };
     case 'music':
-      return { type: 'music', url: 'https://open.spotify.com/track/', label: 'Listen' };
+      return { type: 'music', url: 'https://open.spotify.com/track/', label: 'Listen', icon: 'play' };
     case 'artist':
       return { type: 'artist', fid: 19640, displayName: 'New artist', label: 'View profile' };
     case 'poll':
       return { type: 'poll', question: 'What should we do next?', options: ['Option A', 'Option B'] };
+    case 'chart':
+      return {
+        type: 'chart',
+        title: 'Top 3',
+        bars: [
+          { label: 'Alice', value: 12 },
+          { label: 'Bob', value: 8 },
+          { label: 'Carol', value: 4 },
+        ],
+      };
+    case 'toggle':
+      return {
+        type: 'toggle',
+        label: 'Pick one',
+        options: ['Yes', 'No', 'Maybe'],
+        orientation: 'horizontal',
+      };
   }
 }
 
@@ -205,6 +238,15 @@ export default function Builder() {
             </select>
           </div>
 
+          <label className="flex items-center gap-2 text-sm text-[#e8eef7] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={doc.confetti ?? false}
+              onChange={(e) => setDoc((d) => ({ ...d, confetti: e.target.checked }))}
+            />
+            Confetti effect on render
+          </label>
+
           <div className="border-t border-[#1f3252] pt-3 space-y-2">
             <h3 className="text-xs text-[#8aa0bd] uppercase tracking-wide">Blocks</h3>
             {doc.blocks.map((block, idx) => (
@@ -340,6 +382,25 @@ function BlockEditor({
             placeholder="https://"
             className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
           />
+          <div className="flex gap-2">
+            <select
+              value={block.icon ?? 'external-link'}
+              onChange={(e) => onChange({ icon: e.target.value as IconName } as Partial<Block>)}
+              className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            >
+              {ICONS.map((i) => (
+                <option key={i} value={i}>{i}</option>
+              ))}
+            </select>
+            <select
+              value={block.variant ?? 'primary'}
+              onChange={(e) => onChange({ variant: e.target.value as 'primary' | 'secondary' } as Partial<Block>)}
+              className="bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            >
+              <option value="primary">primary</option>
+              <option value="secondary">secondary</option>
+            </select>
+          </div>
         </>
       )}
 
@@ -358,6 +419,15 @@ function BlockEditor({
             rows={2}
             className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
           />
+          <select
+            value={block.icon ?? 'share'}
+            onChange={(e) => onChange({ icon: e.target.value as IconName } as Partial<Block>)}
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          >
+            {ICONS.map((i) => (
+              <option key={i} value={i}>{i}</option>
+            ))}
+          </select>
         </>
       )}
 
@@ -402,6 +472,15 @@ function BlockEditor({
             placeholder="Button label (e.g. Listen)"
             className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
           />
+          <select
+            value={block.icon ?? 'play'}
+            onChange={(e) => onChange({ icon: e.target.value as IconName } as Partial<Block>)}
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          >
+            {ICONS.map((i) => (
+              <option key={i} value={i}>{i}</option>
+            ))}
+          </select>
         </>
       )}
 
@@ -433,8 +512,130 @@ function BlockEditor({
         <PollEditor block={block} onChange={onChange} />
       )}
 
+      {block.type === 'chart' && (
+        <ChartEditor block={block} onChange={onChange} />
+      )}
+
+      {block.type === 'toggle' && (
+        <ToggleEditor block={block} onChange={onChange} />
+      )}
+
       {block.type === 'divider' && <p className="text-xs text-[#8aa0bd]">Visual separator. No fields.</p>}
     </div>
+  );
+}
+
+function ChartEditor({
+  block,
+  onChange,
+}: {
+  block: import('@/lib/blocks').ChartBlock;
+  onChange: (patch: Partial<Block>) => void;
+}) {
+  function setBar(i: number, patch: Partial<{ label: string; value: number }>) {
+    const next = block.bars.map((b, j) => (j === i ? { ...b, ...patch } : b));
+    onChange({ bars: next } as Partial<Block>);
+  }
+  function addBar() {
+    if (block.bars.length >= 6) return;
+    onChange({ bars: [...block.bars, { label: 'New', value: 1 }] } as Partial<Block>);
+  }
+  function removeBar(i: number) {
+    if (block.bars.length <= 1) return;
+    onChange({ bars: block.bars.filter((_, j) => j !== i) } as Partial<Block>);
+  }
+  return (
+    <>
+      <input
+        value={block.title}
+        onChange={(e) => onChange({ title: e.target.value } as Partial<Block>)}
+        placeholder="Chart title"
+        className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+      />
+      <div className="space-y-1">
+        {block.bars.map((bar, i) => (
+          <div key={i} className="flex gap-1">
+            <input
+              value={bar.label}
+              onChange={(e) => setBar(i, { label: e.target.value })}
+              placeholder="Label"
+              className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+            <input
+              type="number"
+              value={bar.value}
+              onChange={(e) => setBar(i, { value: Number(e.target.value) })}
+              placeholder="Value"
+              className="w-20 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+            {block.bars.length > 1 && (
+              <button onClick={() => removeBar(i)} className="px-2 text-xs text-red-400 hover:bg-red-900 rounded">x</button>
+            )}
+          </div>
+        ))}
+      </div>
+      {block.bars.length < 6 && (
+        <button onClick={addBar} className="text-xs text-[#f5a623] hover:underline">+ add bar</button>
+      )}
+    </>
+  );
+}
+
+function ToggleEditor({
+  block,
+  onChange,
+}: {
+  block: import('@/lib/blocks').ToggleBlock;
+  onChange: (patch: Partial<Block>) => void;
+}) {
+  function setOption(i: number, value: string) {
+    const next = [...block.options];
+    next[i] = value;
+    onChange({ options: next } as Partial<Block>);
+  }
+  function addOption() {
+    if (block.options.length >= 6) return;
+    onChange({ options: [...block.options, `Option ${block.options.length + 1}`] } as Partial<Block>);
+  }
+  function removeOption(i: number) {
+    if (block.options.length <= 2) return;
+    onChange({ options: block.options.filter((_, j) => j !== i) } as Partial<Block>);
+  }
+  return (
+    <>
+      <input
+        value={block.label}
+        onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)}
+        placeholder="Toggle label"
+        className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+      />
+      <select
+        value={block.orientation ?? 'horizontal'}
+        onChange={(e) => onChange({ orientation: e.target.value as 'horizontal' | 'vertical' } as Partial<Block>)}
+        className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+      >
+        <option value="horizontal">horizontal</option>
+        <option value="vertical">vertical</option>
+      </select>
+      <div className="space-y-1">
+        {block.options.map((opt, i) => (
+          <div key={i} className="flex gap-1">
+            <input
+              value={opt}
+              onChange={(e) => setOption(i, e.target.value)}
+              placeholder={`Option ${i + 1}`}
+              className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+            {block.options.length > 2 && (
+              <button onClick={() => removeOption(i)} className="px-2 text-xs text-red-400 hover:bg-red-900 rounded">x</button>
+            )}
+          </div>
+        ))}
+      </div>
+      {block.options.length < 6 && (
+        <button onClick={addOption} className="text-xs text-[#f5a623] hover:underline">+ add option</button>
+      )}
+    </>
   );
 }
 
@@ -566,6 +767,46 @@ function BlockPreview({ block, theme }: { block: Block; theme: SnapDoc['theme'] 
             <li key={i}>- {opt}</li>
           ))}
         </ul>
+      </div>
+    );
+  }
+  if (block.type === 'chart') {
+    const max = Math.max(...block.bars.map((b) => b.value), 1);
+    return (
+      <div className="bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 space-y-2">
+        <div className="font-bold text-sm">{block.title}</div>
+        <div className="space-y-1">
+          {block.bars.map((bar, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs">
+              <span className="w-20 truncate text-[#8aa0bd] text-right">{bar.label}</span>
+              <div className="flex-1 h-2 bg-[#1f3252] rounded">
+                <div
+                  className="h-full rounded"
+                  style={{ width: `${(bar.value / max) * 100}%`, background: accent }}
+                />
+              </div>
+              <span className="w-8 text-[#8aa0bd] tabular-nums">{bar.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (block.type === 'toggle') {
+    return (
+      <div className="bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 space-y-1">
+        <div className="text-xs text-[#8aa0bd]">{block.label}</div>
+        <div className={block.orientation === 'vertical' ? 'flex flex-col gap-1' : 'flex gap-1'}>
+          {block.options.map((opt, i) => (
+            <span
+              key={i}
+              className="px-2 py-1 bg-[#1f3252] rounded text-xs"
+              style={i === 0 ? { background: accent, color: '#0a1628' } : {}}
+            >
+              {opt}
+            </span>
+          ))}
+        </div>
       </div>
     );
   }
