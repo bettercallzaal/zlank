@@ -28,6 +28,9 @@ const BLOCK_OPTIONS: { type: BlockType; label: string; icon: string }[] = [
   { type: 'poll', label: 'Poll', icon: 'P' },
   { type: 'chart', label: 'Bar chart', icon: 'C' },
   { type: 'toggle', label: 'Toggle', icon: 'G' },
+  { type: 'progress', label: 'Progress', icon: '%' },
+  { type: 'slider', label: 'Slider', icon: '~' },
+  { type: 'switch', label: 'Switch', icon: 'O' },
   { type: 'divider', label: 'Divider', icon: '-' },
 ];
 
@@ -87,6 +90,12 @@ function newBlock(type: BlockType, availablePageIds: string[] = []): Block {
         options: ['Yes', 'No', 'Maybe'],
         orientation: 'horizontal',
       };
+    case 'progress':
+      return { type: 'progress', label: 'Progress to goal', value: 65, max: 100 };
+    case 'slider':
+      return { type: 'slider', label: 'Rate it', min: 0, max: 10, defaultValue: 7 };
+    case 'switch':
+      return { type: 'switch', label: 'Subscribe to updates', defaultChecked: false };
   }
 }
 
@@ -712,6 +721,58 @@ function BlockEditor({
         </>
       )}
 
+      {block.type === 'progress' && (
+        <>
+          <input
+            value={block.label}
+            onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)}
+            placeholder="Label (e.g. Funded)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <div className="flex gap-2">
+            <input type="number" value={block.value} onChange={(e) => onChange({ value: Number(e.target.value) } as Partial<Block>)} placeholder="value" className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm" />
+            <input type="number" value={block.max} onChange={(e) => onChange({ max: Number(e.target.value) } as Partial<Block>)} placeholder="max" className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm" />
+          </div>
+        </>
+      )}
+      {block.type === 'slider' && (
+        <>
+          <input value={block.label} onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)} placeholder="Label (e.g. Rate)" className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm" />
+          <div className="flex gap-2">
+            <input type="number" value={block.min} onChange={(e) => onChange({ min: Number(e.target.value) } as Partial<Block>)} placeholder="min" className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm" />
+            <input type="number" value={block.max} onChange={(e) => onChange({ max: Number(e.target.value) } as Partial<Block>)} placeholder="max" className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm" />
+            <input type="number" value={block.defaultValue} onChange={(e) => onChange({ defaultValue: Number(e.target.value) } as Partial<Block>)} placeholder="default" className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm" />
+          </div>
+        </>
+      )}
+      {block.type === 'switch' && (
+        <>
+          <input value={block.label} onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)} placeholder="Label" className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm" />
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={block.defaultChecked} onChange={(e) => onChange({ defaultChecked: e.target.checked } as Partial<Block>)} />
+            Default checked
+          </label>
+        </>
+      )}
+      {block.type === 'header' && (
+        <>
+          <input
+            value={block.badgeText ?? ''}
+            onChange={(e) => onChange({ badgeText: e.target.value } as Partial<Block>)}
+            placeholder="Badge text (optional)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <select
+            value={block.badgeColor ?? 'gray'}
+            onChange={(e) => onChange({ badgeColor: e.target.value as 'green' | 'red' | 'amber' | 'gray' | 'purple' | 'blue' | 'pink' | 'teal' } as Partial<Block>)}
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          >
+            {['gray', 'green', 'amber', 'red', 'purple', 'blue', 'pink', 'teal'].map((c) => (
+              <option key={c} value={c}>badge: {c}</option>
+            ))}
+          </select>
+        </>
+      )}
       {block.type === 'divider' && <p className="text-xs text-[#8aa0bd]">Visual separator. No fields.</p>}
     </div>
   );
@@ -1006,6 +1067,35 @@ function BlockPreview({ block, theme, allPageIds = [] }: { block: Block; theme: 
             </span>
           ))}
         </div>
+      </div>
+    );
+  }
+  if (block.type === 'progress') {
+    const pct = Math.min(100, (block.value / Math.max(1, block.max)) * 100);
+    return (
+      <div className="space-y-1">
+        <div className="text-xs text-[#8aa0bd]">{block.label}</div>
+        <div className="h-2 bg-[#1f3252] rounded">
+          <div className="h-full rounded" style={{ width: `${pct}%`, background: accent }} />
+        </div>
+      </div>
+    );
+  }
+  if (block.type === 'slider') {
+    return (
+      <div className="space-y-1">
+        <div className="text-xs text-[#8aa0bd]">{block.label} ({block.min}-{block.max}, default {block.defaultValue})</div>
+        <input type="range" min={block.min} max={block.max} value={block.defaultValue} readOnly className="w-full" />
+      </div>
+    );
+  }
+  if (block.type === 'switch') {
+    return (
+      <div className="flex items-center justify-between bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2">
+        <span className="text-sm">{block.label}</span>
+        <span className={`px-2 py-0.5 text-xs rounded ${block.defaultChecked ? 'text-[#0a1628]' : 'text-[#8aa0bd]'}`} style={block.defaultChecked ? { background: accent } : { background: '#1f3252' }}>
+          {block.defaultChecked ? 'on' : 'off'}
+        </span>
       </div>
     );
   }

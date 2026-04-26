@@ -18,11 +18,22 @@ function blockToElements(
 
   switch (block.type) {
     case 'header': {
-      elements[id] = {
+      const itemId = id;
+      const childIds: string[] = [];
+      if (block.badgeText) {
+        const badgeId = `${id}_badge`;
+        elements[badgeId] = {
+          type: 'badge',
+          props: { label: block.badgeText, color: block.badgeColor ?? 'gray' },
+        };
+        childIds.push(badgeId);
+      }
+      elements[itemId] = {
         type: 'item',
         props: { title: block.title, description: block.subtitle ?? '' },
+        ...(childIds.length ? { children: childIds } : {}),
       };
-      ids.push(id);
+      ids.push(itemId);
       break;
     }
     case 'text': {
@@ -171,6 +182,40 @@ function blockToElements(
         type: 'button',
         props,
         on: { press: { action: 'submit', params: { target: `${baseUrl}?page=${encodeURIComponent(block.pageId)}` } } },
+      };
+      ids.push(id);
+      break;
+    }
+    case 'progress': {
+      elements[id] = {
+        type: 'progress',
+        props: { value: block.value, max: block.max, label: block.label },
+      };
+      ids.push(id);
+      break;
+    }
+    case 'slider': {
+      elements[id] = {
+        type: 'slider',
+        props: {
+          name: `slider_${idx}`,
+          label: block.label,
+          min: block.min,
+          max: block.max,
+          defaultValue: block.defaultValue,
+        },
+      };
+      ids.push(id);
+      break;
+    }
+    case 'switch': {
+      elements[id] = {
+        type: 'switch',
+        props: {
+          name: `switch_${idx}`,
+          label: block.label,
+          defaultChecked: block.defaultChecked,
+        },
       };
       ids.push(id);
       break;
