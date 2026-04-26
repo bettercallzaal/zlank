@@ -18,7 +18,8 @@ export type BlockType =
   | 'progress'
   | 'slider'
   | 'switch'
-  | 'feedback';
+  | 'feedback'
+  | 'chatbot';
 
 // Subset of the 34 Snap icons - the most useful for blocks.
 export const ICONS = [
@@ -144,6 +145,24 @@ export interface SwitchBlock {
   defaultChecked: boolean;
 }
 
+// User chats with an LLM inline. Submit logs the message + LLM reply to
+// Redis (chatlog:{snapId}) and returns a Snap with the reply + same chatbot
+// block to keep the loop going. Stateless per-turn (Snap protocol has no
+// per-user state surface yet).
+export interface ChatbotBlock {
+  type: 'chatbot';
+  /** Title shown above the chat input. */
+  title: string;
+  /** Subtitle / instructions. */
+  prompt: string;
+  /** System prompt that frames the LLM. */
+  systemPrompt: string;
+  /** Submit button label. */
+  label: string;
+  /** Placeholder for the input. */
+  placeholder?: string;
+}
+
 // User types feedback inline. Submit returns a one-tap "Open composer"
 // button that pre-fills the cast: "@{mention} {prefix} {text}".
 export interface FeedbackBlock {
@@ -174,7 +193,8 @@ type AnyBlock =
   | ProgressBlock
   | SliderBlock
   | SwitchBlock
-  | FeedbackBlock;
+  | FeedbackBlock
+  | ChatbotBlock;
 
 // Optional `gate` lets a block require a token-balance check before render.
 // Evaluated server-side on POST; falsy on GET (no FID), so gated blocks
@@ -355,6 +375,15 @@ export function clampBlock(block: Block): Block {
         mention: String(block.mention || 'zaal').replace(/^@/, '').slice(0, NAME_MAX),
         prefix: block.prefix?.slice(0, LABEL_MAX),
         channelKey: block.channelKey?.replace(/^\//, '').slice(0, NAME_MAX),
+      };
+    case 'chatbot':
+      return {
+        ...block,
+        title: block.title.slice(0, TITLE_MAX),
+        prompt: block.prompt.slice(0, QUESTION_MAX),
+        systemPrompt: block.systemPrompt.slice(0, 2000),
+        label: block.label.slice(0, LABEL_MAX),
+        placeholder: block.placeholder?.slice(0, 60),
       };
   }
 }

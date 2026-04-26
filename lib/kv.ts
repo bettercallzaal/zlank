@@ -149,3 +149,47 @@ export async function getVotes(
   for (const [k, v] of Object.entries(tallies)) out[k] = Number(v);
   return out;
 }
+
+const CHATLOG_PREFIX = 'chatlog:';
+const CHATLOG_MAX = 500;
+
+export interface ChatLogEntry {
+  ts: number;
+  fid?: number;
+  text: string;
+  reply?: string | null;
+}
+
+export async function appendChatLog(
+  snapId: string,
+  entry: ChatLogEntry,
+): Promise<void> {
+  const c = await getClient();
+  if (!c) return;
+  const key = CHATLOG_PREFIX + snapId;
+  await c.lPush(key, JSON.stringify(entry));
+  await c.lTrim(key, 0, CHATLOG_MAX - 1);
+  await c.expire(key, 60 * 60 * 24 * 90);
+}
+
+export async function getChatLog(
+  snapId: string,
+  limit = 50,
+): Promise<ChatLogEntry[]> {
+  const c = await getClient();
+  if (!c) return [];
+  const raw = await c.lRange(
+    CHATLOG_PREFIX + snapId,
+    0,
+    Math.min(limit, CHATLOG_MAX) - 1,
+  );
+  const out: ChatLogEntry[] = [];
+  for (const r of raw) {
+    try {
+      out.push(JSON.parse(r) as ChatLogEntry);
+    } catch {
+      // skip malformed
+    }
+  }
+  return out;
+}

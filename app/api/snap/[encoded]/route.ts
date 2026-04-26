@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { parseRequest } from '@farcaster/snap/server';
 import { resolveSnap } from '@/lib/resolve-snap';
 import { docToSnap } from '@/lib/snap-spec';
-import { recordVote } from '@/lib/kv';
+import { recordVote, appendChatLog } from '@/lib/kv';
 import { evaluateGates, isGateRule, type GateResult } from '@/lib/gates';
+import { chat as llmChat } from '@/lib/llm';
 import type { SnapDoc, Block, ChartBar } from '@/lib/blocks';
 
 export const runtime = 'nodejs';
@@ -246,6 +247,33 @@ export async function POST(
     }
   }
 
+  const chatEntry = Object.entries(inputs).find(([k]) => k.startsWith('chat_'));
+  if (chatEntry) {
+    const [chatKey, chatValue] = chatEntry;
+    const blockIdx = Number(chatKey.replace('chat_', ''));
+    const text = String(chatValue ?? '').trim();
+    if (text) {
+      const targetPage = doc.pages.find((p) => p.id === (pageId || doc.pages[0]?.id));
+      const block = targetPage?.blocks[blockIdx];
+      if (block?.type === 'chatbot') {
+        const reply = await llmChat(
+          [
+            { role: 'system', content: block.systemPrompt },
+            { role: 'user', content: text },
+          ],
+          { maxTokens: 180 },
+        );
+        await appendChatLog(encoded, { ts: Date.now(), fid, text, reply });
+        return snapJsonResponse(
+          buildChatReplyDoc(doc, block, text, reply, blockIdx),
+          origin,
+          encoded,
+          pageId,
+        );
+      }
+    }
+  }
+
   const feedbackEntry = Object.entries(inputs).find(([k]) => k.startsWith('feedback_'));
   if (feedbackEntry) {
     const [fbKey, fbValue] = feedbackEntry;
@@ -295,6 +323,37 @@ function buildResultsDoc(
     ...doc,
     pages: [{ id: 'results', blocks: newBlocks }],
     confetti: true,
+  };
+}
+
+function buildChatReplyDoc(
+  doc: SnapDoc,
+  block: { title: string; prompt: string; systemPrompt: string; label: string; placeholder?: string },
+  userText: string,
+  reply: string | null,
+  _blockIdx: number,
+): SnapDoc {
+  const replyText =
+    reply ??
+    'Logged. (No LLM key configured - ack only. Set MINIMAX_API_KEY or ANTHROPIC_API_KEY to enable replies.)';
+  const newBlocks: Block[] = [
+    { type: 'header', title: block.title, subtitle: 'Got it' },
+    { type: 'text', content: `You: ${userText.slice(0, 240)}` },
+    { type: 'divider' },
+    { type: 'text', content: replyText.slice(0, 320) },
+    { type: 'divider' },
+    {
+      type: 'chatbot',
+      title: block.title,
+      prompt: block.prompt,
+      systemPrompt: block.systemPrompt,
+      label: block.label,
+      placeholder: block.placeholder,
+    },
+  ];
+  return {
+    ...doc,
+    pages: [{ id: 'chat-reply', blocks: newBlocks }],
   };
 }
 

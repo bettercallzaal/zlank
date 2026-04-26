@@ -32,6 +32,7 @@ const BLOCK_OPTIONS: { type: BlockType; label: string; icon: string }[] = [
   { type: 'slider', label: 'Slider', icon: '~' },
   { type: 'switch', label: 'Switch', icon: 'O' },
   { type: 'feedback', label: 'Feedback', icon: '@' },
+  { type: 'chatbot', label: 'Chatbot', icon: 'C' },
   { type: 'divider', label: 'Divider', icon: '-' },
 ];
 
@@ -104,6 +105,16 @@ function newBlock(type: BlockType, availablePageIds: string[] = []): Block {
         prompt: 'What should we add?',
         mention: 'zaal',
         prefix: 'feedback for zlank:',
+      };
+    case 'chatbot':
+      return {
+        type: 'chatbot',
+        title: 'What are you building?',
+        prompt: 'Share your idea. Reply comes back inline.',
+        systemPrompt:
+          'You are a friendly builder coach. Reply briefly (max 2 sentences) and ask one curious follow-up about what they are making.',
+        label: 'Send',
+        placeholder: 'Type here...',
       };
   }
 }
