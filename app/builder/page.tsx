@@ -629,10 +629,14 @@ function BlockEditor({
 
       {block.type === 'image' && (
         <>
+          <ImageUploader
+            currentUrl={block.url}
+            onUploaded={(url) => onChange({ url } as Partial<Block>)}
+          />
           <input
             value={block.url}
             onChange={(e) => onChange({ url: e.target.value } as Partial<Block>)}
-            placeholder="https://image.url"
+            placeholder="https://image.url (or upload above)"
             className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
           />
           <input
@@ -919,6 +923,68 @@ function BlockEditor({
       {block.type === 'divider' && <p className="text-xs text-[#8aa0bd]">Visual separator. No fields.</p>}
 
       <GateEditor block={block} onChange={onChange} />
+    </div>
+  );
+}
+
+function ImageUploader({
+  currentUrl,
+  onUploaded,
+}: {
+  currentUrl: string;
+  onUploaded: (url: string) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleFile(file: File) {
+    setUploading(true);
+    setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      const data = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      onUploaded(data.url);
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <label className="px-2 py-1 bg-[#0a1628] border border-[#1f3252] rounded text-xs cursor-pointer hover:bg-[#1f3252]">
+          {uploading ? 'Uploading...' : 'Upload image'}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleFile(f);
+              e.target.value = '';
+            }}
+            disabled={uploading}
+            className="hidden"
+          />
+        </label>
+        {currentUrl && (
+          <a
+            href={currentUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-[#8aa0bd] underline truncate max-w-[180px]"
+          >
+            {currentUrl.replace(/^https?:\/\//, '').slice(0, 40)}
+          </a>
+        )}
+      </div>
+      {err && <p className="text-[11px] text-red-400">{err}</p>}
     </div>
   );
 }
