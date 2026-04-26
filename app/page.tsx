@@ -14,7 +14,7 @@ export default function Home() {
       </p>
       <p className="text-sm text-[#8aa0bd] mb-8 italic">
         This page is itself a Snap. Cast{' '}
-        <code className="text-[#f5a623] not-italic">zlank.vercel.app</code>{' '}
+        <code className="text-[#f5a623] not-italic">zlank.online</code>{' '}
         in Farcaster - it renders inline.
       </p>
 

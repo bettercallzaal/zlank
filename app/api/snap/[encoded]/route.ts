@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { parseRequest } from '@farcaster/snap/server';
 import { resolveSnap } from '@/lib/resolve-snap';
 import { docToSnap } from '@/lib/snap-spec';
-import type { SnapDoc } from '@/lib/blocks';
+import { recordVote } from '@/lib/kv';
+import type { SnapDoc, Block, ChartBar } from '@/lib/blocks';
 
 export const runtime = 'nodejs';
 
@@ -150,7 +152,98 @@ export async function POST(
   const doc = (await resolveSnap(encoded)) ?? FALLBACK_DOC;
   const origin = getOrigin(req);
   const pageId = new URL(req.url).searchParams.get('page') ?? undefined;
+
+  // Parse the JFS POST body to extract user inputs (poll vote, slider value,
+  // switch state, toggle selection). On any vote_X input, record + return a
+  // results Snap with bar chart of tallies + confetti.
+  let inputs: Record<string, unknown> = {};
+  try {
+    const parsed = await parseRequest(req.clone(), {
+      skipJFSVerification: true,
+      maxSkewSeconds: 60 * 60 * 24 * 365, // 1 year - permissive for emulator + tests
+    });
+    if (parsed.success && parsed.action.type === 'post') {
+      inputs = parsed.action.inputs ?? {};
+    }
+  } catch {
+    // ignore - try fallback raw parse
+  }
+  // Fallback: try direct JSON body parse for inputs (in case JFS validation strict)
+  if (Object.keys(inputs).length === 0) {
+    try {
+      const body = (await req.clone().json()) as { payload?: string; inputs?: Record<string, unknown> };
+      if (body.inputs && typeof body.inputs === 'object') {
+        inputs = body.inputs;
+      } else if (typeof body.payload === 'string') {
+        // base64url-decode the payload
+        const padded = body.payload.replace(/-/g, '+').replace(/_/g, '/');
+        const padding = padded.length % 4 === 0 ? '' : '='.repeat(4 - (padded.length % 4));
+        const json = Buffer.from(padded + padding, 'base64').toString('utf8');
+        const decoded = JSON.parse(json) as { inputs?: Record<string, unknown> };
+        if (decoded.inputs && typeof decoded.inputs === 'object') {
+          inputs = decoded.inputs;
+        }
+      }
+    } catch {
+      // give up
+    }
+  }
+
+  const voteEntry = Object.entries(inputs).find(([k]) => k.startsWith('vote_'));
+  if (voteEntry) {
+    const [voteKey, voteValue] = voteEntry;
+    const blockIdx = Number(voteKey.replace('vote_', ''));
+    const optionRaw = String(voteValue ?? '').trim();
+    if (optionRaw) {
+      const tallies = await recordVote(encoded, blockIdx, optionRaw);
+      return snapJsonResponse(buildResultsDoc(doc, blockIdx, tallies, optionRaw), origin, encoded, pageId);
+    }
+  }
+
+  // Other inputs (slider, switch, toggle) - acknowledge with thank-you Snap
+  if (Object.keys(inputs).length > 0) {
+    return snapJsonResponse(buildAckDoc(doc, inputs), origin, encoded, pageId);
+  }
+
   return snapJsonResponse(doc, origin, encoded, pageId);
+}
+
+function buildResultsDoc(
+  doc: SnapDoc,
+  blockIdx: number,
+  tallies: Record<string, number>,
+  votedFor: string,
+): SnapDoc {
+  const bars: ChartBar[] = Object.entries(tallies)
+    .sort(([, a], [, b]) => b - a)
+    .map(([label, value]) => ({ label, value }));
+  const total = bars.reduce((s, b) => s + b.value, 0);
+  const newBlocks: Block[] = [
+    { type: 'header', title: 'Vote recorded', subtitle: `You picked: ${votedFor}` },
+    { type: 'chart', title: `Live results (${total} votes)`, bars },
+    { type: 'divider' },
+    { type: 'text', content: 'Tap the original cast to vote again or share.' },
+  ];
+  return {
+    ...doc,
+    pages: [{ id: 'results', blocks: newBlocks }],
+    confetti: true,
+  };
+}
+
+function buildAckDoc(doc: SnapDoc, inputs: Record<string, unknown>): SnapDoc {
+  const summary = Object.entries(inputs)
+    .map(([k, v]) => `${k.replace(/_\d+$/, '')} = ${String(v)}`)
+    .join('\n');
+  const newBlocks: Block[] = [
+    { type: 'header', title: 'Got it', subtitle: 'Your input was received' },
+    { type: 'text', content: summary || 'Input recorded' },
+  ];
+  return {
+    ...doc,
+    pages: [{ id: 'ack', blocks: newBlocks }],
+    confetti: true,
+  };
 }
 
 function escapeHtml(s: string): string {

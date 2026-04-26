@@ -1,4 +1,4 @@
-// The Zlank promo Snap - what cast embeds of zlank.vercel.app render as.
+// The Zlank promo Snap - what cast embeds of zlank.online render as.
 // Self-demonstrating: the homepage IS a Snap that shows what Zlank does.
 
 const SNAP_MEDIA_TYPE = 'application/vnd.farcaster.snap+json';

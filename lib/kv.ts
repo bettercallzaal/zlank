@@ -115,3 +115,37 @@ export async function loadSnapDoc(id: string): Promise<SnapDoc | null> {
 export function isShortId(idOrEncoded: string): boolean {
   return idOrEncoded.length <= 20 && /^[A-Za-z0-9_-]+$/.test(idOrEncoded);
 }
+
+const VOTE_PREFIX = 'vote:';
+
+function voteKey(snapId: string, blockIdx: number): string {
+  return `${VOTE_PREFIX}${snapId}:${blockIdx}`;
+}
+
+export async function recordVote(
+  snapId: string,
+  blockIdx: number,
+  option: string,
+): Promise<Record<string, number>> {
+  const c = await getClient();
+  if (!c) return {};
+  const key = voteKey(snapId, blockIdx);
+  await c.hIncrBy(key, option, 1);
+  await c.expire(key, 60 * 60 * 24 * 30); // 30 day TTL
+  const tallies = await c.hGetAll(key);
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(tallies)) out[k] = Number(v);
+  return out;
+}
+
+export async function getVotes(
+  snapId: string,
+  blockIdx: number,
+): Promise<Record<string, number>> {
+  const c = await getClient();
+  if (!c) return {};
+  const tallies = await c.hGetAll(voteKey(snapId, blockIdx));
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(tallies)) out[k] = Number(v);
+  return out;
+}

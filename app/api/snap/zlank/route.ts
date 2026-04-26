@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildPromoSnap, ZLANK_SNAP_MEDIA_TYPE } from '@/lib/promo-snap';
 
-// Canonical Zlank promo Snap. Cast zlank.vercel.app and FC clients that fetch
+// Canonical Zlank promo Snap. Cast zlank.online and FC clients that fetch
 // /api/snap/zlank get this self-demonstrating Snap.
 
 export const runtime = 'nodejs';
@@ -16,7 +16,7 @@ const CORS_HEADERS = {
 function getOrigin(req: NextRequest): string {
   if (process.env.NEXT_PUBLIC_BASE_URL) return process.env.NEXT_PUBLIC_BASE_URL.replace(/\/$/, '');
   const proto = req.headers.get('x-forwarded-proto') ?? 'https';
-  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'zlank.vercel.app';
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'zlank.online';
   return `${proto}://${host}`;
 }
 
