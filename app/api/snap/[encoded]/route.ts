@@ -3,6 +3,7 @@ import { parseRequest } from '@farcaster/snap/server';
 import { resolveSnap } from '@/lib/resolve-snap';
 import { docToSnap } from '@/lib/snap-spec';
 import { recordVote } from '@/lib/kv';
+import { evaluateGates, isGateRule, type GateResult } from '@/lib/gates';
 import type { SnapDoc, Block, ChartBar } from '@/lib/blocks';
 
 export const runtime = 'nodejs';
@@ -49,8 +50,35 @@ const CORS_HEADERS = {
   'Access-Control-Expose-Headers': 'Link, Vary, Content-Type',
 };
 
-function snapJsonResponse(doc: SnapDoc, origin: string, encoded: string, pageId?: string): NextResponse {
-  const snap = docToSnap(doc, `${origin}/api/snap/${encoded}`, pageId);
+async function resolveGatesForPage(
+  doc: SnapDoc,
+  pageId: string | undefined,
+  fid: number | undefined,
+): Promise<Map<number, GateResult> | undefined> {
+  const targetId = pageId || doc.pages[0]?.id;
+  const page = doc.pages.find((p) => p.id === targetId);
+  if (!page) return undefined;
+  const rules = page.blocks
+    .map((block, idx) => ({ idx, rule: block.gate }))
+    .filter(
+      (entry): entry is { idx: number; rule: NonNullable<typeof entry.rule> } =>
+        isGateRule(entry.rule),
+    );
+  if (rules.length === 0) return undefined;
+  return evaluateGates(rules, { fid });
+}
+
+function snapJsonResponse(
+  doc: SnapDoc,
+  origin: string,
+  encoded: string,
+  pageId?: string,
+  gateResults?: Map<number, GateResult>,
+): NextResponse {
+  const snap = docToSnap(doc, `${origin}/api/snap/${encoded}`, {
+    pageId,
+    gateResults,
+  });
   const linkHeader =
     `</api/snap/${encoded}>; rel="alternate"; type="${SNAP_MEDIA_TYPE}", ` +
     `</api/snap/${encoded}>; rel="alternate"; type="text/html"`;
@@ -138,7 +166,9 @@ export async function GET(
   // Content negotiation: Snap-aware clients ask for the snap media type.
   const accept = req.headers.get('accept') ?? '';
   if (accept.includes(SNAP_MEDIA_TYPE) || accept.includes('vnd.farcaster.snap')) {
-    return snapJsonResponse(doc, origin, encoded, pageId);
+    // GET has no FID; gated blocks render as locked stubs.
+    const gateResults = await resolveGatesForPage(doc, pageId, undefined);
+    return snapJsonResponse(doc, origin, encoded, pageId, gateResults);
   }
 
   return htmlResponse(doc, origin, encoded);
@@ -153,35 +183,46 @@ export async function POST(
   const origin = getOrigin(req);
   const pageId = new URL(req.url).searchParams.get('page') ?? undefined;
 
-  // Parse the JFS POST body to extract user inputs (poll vote, slider value,
-  // switch state, toggle selection). On any vote_X input, record + return a
-  // results Snap with bar chart of tallies + confetti.
+  // Parse JFS POST body for inputs + the viewer's FID (used for gate eval).
   let inputs: Record<string, unknown> = {};
+  let fid: number | undefined;
   try {
     const parsed = await parseRequest(req.clone(), {
       skipJFSVerification: true,
-      maxSkewSeconds: 60 * 60 * 24 * 365, // 1 year - permissive for emulator + tests
+      maxSkewSeconds: 60 * 60 * 24 * 365,
     });
     if (parsed.success && parsed.action.type === 'post') {
       inputs = parsed.action.inputs ?? {};
+      fid = parsed.action.user?.fid ?? parsed.action.fid;
     }
   } catch {
-    // ignore - try fallback raw parse
+    // try fallback raw parse
   }
-  // Fallback: try direct JSON body parse for inputs (in case JFS validation strict)
-  if (Object.keys(inputs).length === 0) {
+  if (Object.keys(inputs).length === 0 || fid === undefined) {
     try {
-      const body = (await req.clone().json()) as { payload?: string; inputs?: Record<string, unknown> };
+      const body = (await req.clone().json()) as {
+        payload?: string;
+        inputs?: Record<string, unknown>;
+        fid?: number;
+      };
       if (body.inputs && typeof body.inputs === 'object') {
         inputs = body.inputs;
-      } else if (typeof body.payload === 'string') {
-        // base64url-decode the payload
+      }
+      if (typeof body.fid === 'number') fid = body.fid;
+      if (typeof body.payload === 'string') {
         const padded = body.payload.replace(/-/g, '+').replace(/_/g, '/');
         const padding = padded.length % 4 === 0 ? '' : '='.repeat(4 - (padded.length % 4));
         const json = Buffer.from(padded + padding, 'base64').toString('utf8');
-        const decoded = JSON.parse(json) as { inputs?: Record<string, unknown> };
+        const decoded = JSON.parse(json) as {
+          inputs?: Record<string, unknown>;
+          fid?: number;
+          user?: { fid?: number };
+        };
         if (decoded.inputs && typeof decoded.inputs === 'object') {
           inputs = decoded.inputs;
+        }
+        if (fid === undefined) {
+          fid = decoded.user?.fid ?? decoded.fid;
         }
       }
     } catch {
@@ -196,16 +237,23 @@ export async function POST(
     const optionRaw = String(voteValue ?? '').trim();
     if (optionRaw) {
       const tallies = await recordVote(encoded, blockIdx, optionRaw);
-      return snapJsonResponse(buildResultsDoc(doc, blockIdx, tallies, optionRaw), origin, encoded, pageId);
+      return snapJsonResponse(
+        buildResultsDoc(doc, blockIdx, tallies, optionRaw),
+        origin,
+        encoded,
+        pageId,
+      );
     }
   }
 
-  // Other inputs (slider, switch, toggle) - acknowledge with thank-you Snap
   if (Object.keys(inputs).length > 0) {
     return snapJsonResponse(buildAckDoc(doc, inputs), origin, encoded, pageId);
   }
 
-  return snapJsonResponse(doc, origin, encoded, pageId);
+  // Bare submit (e.g. Unlock button on a gated block) - re-render with gates
+  // evaluated against the now-known FID.
+  const gateResults = await resolveGatesForPage(doc, pageId, fid);
+  return snapJsonResponse(doc, origin, encoded, pageId, gateResults);
 }
 
 function buildResultsDoc(

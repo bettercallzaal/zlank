@@ -1,5 +1,7 @@
 // Block schema for the Zlank builder.
 
+import type { GateRule } from './gates';
+
 export type BlockType =
   | 'header'
   | 'text'
@@ -139,7 +141,7 @@ export interface SwitchBlock {
   defaultChecked: boolean;
 }
 
-export type Block =
+type AnyBlock =
   | HeaderBlock
   | TextBlock
   | LinkBlock
@@ -155,6 +157,11 @@ export type Block =
   | ProgressBlock
   | SliderBlock
   | SwitchBlock;
+
+// Optional `gate` lets a block require a token-balance check before render.
+// Evaluated server-side on POST; falsy on GET (no FID), so gated blocks
+// render as a locked stub until the user taps Unlock.
+export type Block = AnyBlock & { gate?: GateRule };
 
 export type ThemeAccent =
   | 'purple' | 'amber' | 'blue' | 'green' | 'red' | 'pink' | 'teal' | 'gray';
