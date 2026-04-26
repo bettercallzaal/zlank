@@ -975,6 +975,16 @@ function ImageUploader({
   const [err, setErr] = useState<string | null>(null);
 
   async function handleFile(file: File) {
+    const MAX = 4 * 1024 * 1024;
+    const ALLOWED = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    if (file.size > MAX) {
+      setErr(`File too large (${Math.round(file.size / 1024)} KB, max 4 MB)`);
+      return;
+    }
+    if (file.type && !ALLOWED.includes(file.type)) {
+      setErr(`Unsupported type: ${file.type}`);
+      return;
+    }
     setUploading(true);
     setErr(null);
     try {

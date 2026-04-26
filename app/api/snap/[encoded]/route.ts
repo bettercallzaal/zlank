@@ -195,7 +195,7 @@ export async function GET(
   // Content negotiation: Snap-aware clients ask for the snap media type.
   const accept = req.headers.get('accept') ?? '';
   if (accept.includes(SNAP_MEDIA_TYPE) || accept.includes('vnd.farcaster.snap')) {
-    void bumpStat(encoded, 'views');
+    bumpStat(encoded, 'views').catch((err) => console.error('bumpStat views', err));
     const [gateResults, leaderboardData] = await Promise.all([
       resolveGatesForPage(doc, pageId, undefined),
       resolveLeaderboardsForPage(doc, pageId, encoded),
@@ -328,7 +328,9 @@ export async function POST(
     return snapJsonResponse(buildAckDoc(doc, inputs), origin, encoded, pageId);
   }
 
-  void bumpStat(encoded, 'interactions');
+  bumpStat(encoded, 'interactions').catch((err) =>
+    console.error('bumpStat interactions', err),
+  );
 
   // Bare submit (Unlock button etc) - re-render with gates + fresh leaderboards.
   const [gateResults, leaderboardData] = await Promise.all([

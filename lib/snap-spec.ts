@@ -418,14 +418,16 @@ export function docToSnap(
   const childIds: string[] = [];
 
   // Auto-inject coin swap button at top of every page when doc.coin is set.
+  // Snap button label cap is 30 chars; "Buy $" prefix is 5 so symbol gets 25.
+  // swap_token uses `buyToken` (target), no `sellToken` (FC client picks).
   if (doc.coin?.caip19) {
-    const symbol = doc.coin.symbol?.trim() || 'token';
+    const symbol = (doc.coin.symbol?.trim() || 'token').slice(0, 12);
     const buyId = '_zlank_coin_buy';
     const sepId = '_zlank_coin_sep';
     allElements[buyId] = {
       type: 'button',
       props: {
-        label: `Buy $${symbol.slice(0, 24)}`,
+        label: `Buy $${symbol}`,
         variant: 'primary',
         icon: 'coins',
       },
