@@ -11,7 +11,11 @@ export type BlockType =
   | 'artist'
   | 'poll'
   | 'chart'
-  | 'toggle';
+  | 'toggle'
+  | 'navigate'
+  | 'progress'
+  | 'slider'
+  | 'switch';
 
 // Subset of the 34 Snap icons - the most useful for blocks.
 export const ICONS = [
@@ -26,10 +30,15 @@ export const ICONS = [
 ] as const;
 export type IconName = (typeof ICONS)[number];
 
+export type BadgeColor =
+  | 'green' | 'red' | 'amber' | 'gray' | 'purple' | 'blue' | 'pink' | 'teal';
+
 export interface HeaderBlock {
   type: 'header';
   title: string;
   subtitle?: string;
+  badgeText?: string;
+  badgeColor?: BadgeColor;
 }
 
 export interface TextBlock {
@@ -101,6 +110,35 @@ export interface ToggleBlock {
   orientation?: 'horizontal' | 'vertical';
 }
 
+export interface NavigateBlock {
+  type: 'navigate';
+  label: string;
+  pageId: string;
+  icon?: IconName;
+  variant?: 'primary' | 'secondary';
+}
+
+export interface ProgressBlock {
+  type: 'progress';
+  label: string;
+  value: number;
+  max: number;
+}
+
+export interface SliderBlock {
+  type: 'slider';
+  label: string;
+  min: number;
+  max: number;
+  defaultValue: number;
+}
+
+export interface SwitchBlock {
+  type: 'switch';
+  label: string;
+  defaultChecked: boolean;
+}
+
 export type Block =
   | HeaderBlock
   | TextBlock
@@ -112,16 +150,26 @@ export type Block =
   | ArtistBlock
   | PollBlock
   | ChartBlock
-  | ToggleBlock;
+  | ToggleBlock
+  | NavigateBlock
+  | ProgressBlock
+  | SliderBlock
+  | SwitchBlock;
 
 export type ThemeAccent =
   | 'purple' | 'amber' | 'blue' | 'green' | 'red' | 'pink' | 'teal' | 'gray';
+
+export interface SnapPage {
+  id: string;
+  title?: string;
+  blocks: Block[];
+}
 
 export interface SnapDoc {
   version: 1;
   title: string;
   theme: ThemeAccent;
-  blocks: Block[];
+  pages: SnapPage[];
   /** Snap-level effects applied on render. Currently spec supports 'confetti'. */
   confetti?: boolean;
 }
@@ -130,11 +178,16 @@ export const DEFAULT_SNAP: SnapDoc = {
   version: 1,
   title: 'My Snap',
   theme: 'purple',
-  blocks: [
-    { type: 'header', title: 'Hello from Zlank', subtitle: 'A Farcaster Snap built in 30 seconds' },
-    { type: 'text', content: 'Edit blocks on the left. Hit Deploy to share to feed.' },
-    { type: 'link', label: 'Visit Zlank', url: 'https://zlank.online', icon: 'external-link', variant: 'primary' },
-    { type: 'share', label: 'Share', text: 'Just built my first Snap with Zlank', icon: 'share' },
+  pages: [
+    {
+      id: 'home',
+      blocks: [
+        { type: 'header', title: 'Hello from Zlank', subtitle: 'A Farcaster Snap built in 30 seconds' },
+        { type: 'text', content: 'Edit blocks on the left. Hit Deploy to share to feed.' },
+        { type: 'link', label: 'Visit Zlank', url: 'https://zlank.online', icon: 'external-link', variant: 'primary' },
+        { type: 'share', label: 'Share', text: 'Just built my first Snap with Zlank', icon: 'share' },
+      ],
+    },
   ],
 };
 
@@ -173,6 +226,8 @@ export function clampBlock(block: Block): Block {
         ...block,
         title: block.title.slice(0, TITLE_MAX),
         subtitle: block.subtitle?.slice(0, SUBTITLE_MAX),
+        badgeText: block.badgeText?.slice(0, LABEL_MAX),
+        badgeColor: block.badgeColor,
       };
     case 'text':
       return { ...block, content: block.content.slice(0, TEXT_MAX) };
@@ -237,5 +292,38 @@ export function clampBlock(block: Block): Block {
         options: clampOptions(block.options, 2, TOGGLE_OPTIONS_MAX),
         orientation: block.orientation === 'vertical' ? 'vertical' : 'horizontal',
       };
+    case 'navigate':
+      return {
+        ...block,
+        label: block.label.slice(0, LABEL_MAX),
+        pageId: block.pageId.slice(0, 50),
+        icon: clampIcon(block.icon),
+        variant: block.variant === 'primary' ? 'primary' : 'secondary',
+      };
+    case 'progress':
+      return {
+        ...block,
+        label: block.label.slice(0, LABEL_MAX),
+        value: Math.max(0, Number(block.value) || 0),
+        max: Math.max(1, Number(block.max) || 100),
+      };
+    case 'slider':
+      return {
+        ...block,
+        label: block.label.slice(0, LABEL_MAX),
+        min: Number(block.min) || 0,
+        max: Number(block.max) || 100,
+        defaultValue: Number(block.defaultValue) || 0,
+      };
+    case 'switch':
+      return {
+        ...block,
+        label: block.label.slice(0, LABEL_MAX),
+        defaultChecked: Boolean(block.defaultChecked),
+      };
   }
+}
+
+export function getPageIds(doc: SnapDoc): string[] {
+  return doc.pages.map((p) => p.id);
 }

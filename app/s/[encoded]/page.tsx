@@ -11,10 +11,15 @@ const FALLBACK: SnapDoc = {
   version: 1,
   title: 'Snap not found',
   theme: 'gray',
-  blocks: [
-    { type: 'header', title: 'Snap not found', subtitle: 'Invalid or expired link' },
-    { type: 'text', content: 'Build your own at zlank.online' },
-    { type: 'link', label: 'Open Zlank', url: 'https://zlank.online' },
+  pages: [
+    {
+      id: 'home',
+      blocks: [
+        { type: 'header', title: 'Snap not found', subtitle: 'Invalid or expired link' },
+        { type: 'text', content: 'Build your own at zlank.online' },
+        { type: 'link', label: 'Open Zlank', url: 'https://zlank.online' },
+      ],
+    },
   ],
 };
 
@@ -38,16 +43,28 @@ const ACCENT_HEX: Record<SnapDoc['theme'], string> = {
   gray: '#94a3b8',
 };
 
-export default async function SnapViewer({ params }: PageProps) {
+interface SnapViewerProps extends PageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+export default async function SnapViewer({ params, searchParams }: SnapViewerProps) {
   const { encoded } = await params;
+  const { page: pageParam } = await searchParams;
+  const pageId = typeof pageParam === 'string' ? pageParam : undefined;
+
   const doc = (await resolveSnap(encoded)) ?? FALLBACK;
   const accent = ACCENT_HEX[doc.theme];
+
+  // Get the page to render (default to first page)
+  const currentPageId = pageId || doc.pages[0]?.id;
+  const currentPage = doc.pages.find((p) => p.id === currentPageId);
+  const blocks = currentPage?.blocks ?? doc.pages[0]?.blocks ?? [];
 
   return (
     <main className="max-w-md mx-auto px-4 py-8 min-h-screen flex flex-col">
       <div className="space-y-3 flex-1">
-        {doc.blocks.map((block, i) => (
-          <BlockView key={i} block={block} accent={accent} />
+        {blocks.map((block, i) => (
+          <BlockView key={i} block={block} accent={accent} encoded={encoded} />
         ))}
       </div>
       <footer className="mt-8 pt-4 border-t border-[#1f3252] text-xs text-[#8aa0bd] text-center">
@@ -60,7 +77,7 @@ export default async function SnapViewer({ params }: PageProps) {
   );
 }
 
-function BlockView({ block, accent }: { block: Block; accent: string }) {
+function BlockView({ block, accent, encoded }: { block: Block; accent: string; encoded: string }) {
   switch (block.type) {
     case 'header':
       return (
@@ -84,6 +101,16 @@ function BlockView({ block, accent }: { block: Block; accent: string }) {
         >
           {block.label}
         </a>
+      );
+    case 'navigate':
+      return (
+        <Link
+          href={`/s/${encoded}?page=${encodeURIComponent(block.pageId)}`}
+          className="block bg-[#122440] border rounded-lg px-4 py-3 text-center font-bold hover:bg-[#1a2f4f] transition"
+          style={{ color: accent, borderColor: accent }}
+        >
+          {block.label}
+        </Link>
       );
     case 'share': {
       const params = new URLSearchParams();
@@ -165,6 +192,36 @@ function BlockView({ block, accent }: { block: Block; accent: string }) {
           </div>
           <p className="text-xs text-[#8aa0bd]">Vote tallying ships in v0.5 with DB.</p>
         </div>
+      );
+    case 'progress': {
+      const pct = Math.min(100, (block.value / Math.max(1, block.max)) * 100);
+      return (
+        <div className="space-y-2">
+          <div className="text-sm">{block.label}</div>
+          <div className="h-3 bg-[#1f3252] rounded">
+            <div className="h-full rounded transition-all" style={{ width: `${pct}%`, background: accent }} />
+          </div>
+          <div className="text-xs text-[#8aa0bd]">{block.value} / {block.max}</div>
+        </div>
+      );
+    }
+    case 'slider':
+      return (
+        <div className="space-y-2 bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3">
+          <div className="text-sm">{block.label}: {block.defaultValue}</div>
+          <input type="range" min={block.min} max={block.max} defaultValue={block.defaultValue} className="w-full" style={{ accentColor: accent }} />
+          <div className="flex justify-between text-xs text-[#8aa0bd]">
+            <span>{block.min}</span>
+            <span>{block.max}</span>
+          </div>
+        </div>
+      );
+    case 'switch':
+      return (
+        <label className="flex items-center justify-between bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3 cursor-pointer">
+          <span className="text-sm">{block.label}</span>
+          <input type="checkbox" defaultChecked={block.defaultChecked} style={{ accentColor: accent }} />
+        </label>
       );
   }
 }

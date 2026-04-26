@@ -18,11 +18,22 @@ function blockToElements(
 
   switch (block.type) {
     case 'header': {
-      elements[id] = {
+      const itemId = id;
+      const childIds: string[] = [];
+      if (block.badgeText) {
+        const badgeId = `${id}_badge`;
+        elements[badgeId] = {
+          type: 'badge',
+          props: { label: block.badgeText, color: block.badgeColor ?? 'gray' },
+        };
+        childIds.push(badgeId);
+      }
+      elements[itemId] = {
         type: 'item',
         props: { title: block.title, description: block.subtitle ?? '' },
+        ...(childIds.length ? { children: childIds } : {}),
       };
-      ids.push(id);
+      ids.push(itemId);
       break;
     }
     case 'text': {
@@ -162,20 +173,95 @@ function blockToElements(
       ids.push(id);
       break;
     }
+    case 'navigate': {
+      const props: Record<string, unknown> = { label: block.label };
+      if (block.variant) props.variant = block.variant;
+      if (block.icon) props.icon = block.icon;
+      else props.icon = 'chevron-right';
+      elements[id] = {
+        type: 'button',
+        props,
+        on: { press: { action: 'submit', params: { target: `${baseUrl}?page=${encodeURIComponent(block.pageId)}` } } },
+      };
+      ids.push(id);
+      break;
+    }
+    case 'progress': {
+      elements[id] = {
+        type: 'progress',
+        props: { value: block.value, max: block.max, label: block.label },
+      };
+      ids.push(id);
+      break;
+    }
+    case 'slider': {
+      elements[id] = {
+        type: 'slider',
+        props: {
+          name: `slider_${idx}`,
+          label: block.label,
+          min: block.min,
+          max: block.max,
+          defaultValue: block.defaultValue,
+        },
+      };
+      ids.push(id);
+      break;
+    }
+    case 'switch': {
+      elements[id] = {
+        type: 'switch',
+        props: {
+          name: `switch_${idx}`,
+          label: block.label,
+          defaultChecked: block.defaultChecked,
+        },
+      };
+      ids.push(id);
+      break;
+    }
   }
 
   return { ids, elements };
 }
 
-export function docToSnap(doc: SnapDoc, baseUrl: string) {
+export function docToSnap(doc: SnapDoc, baseUrl: string, pageId?: string) {
+  // Default to first page if not specified
+  const targetPage = pageId || doc.pages[0]?.id;
+  const page = doc.pages.find((p) => p.id === targetPage);
+
+  if (!page) {
+    // Fallback: render first page if requested page not found
+    return docToSnap(doc, baseUrl, doc.pages[0]?.id);
+  }
+
   const allElements: Record<string, Element> = {};
   const childIds: string[] = [];
 
-  doc.blocks.forEach((block, idx) => {
+  page.blocks.forEach((block, idx) => {
     const { ids, elements } = blockToElements(block, idx, baseUrl);
     Object.assign(allElements, elements);
     childIds.push(...ids);
   });
+
+  // Auto-append "Built with Zlank" footer to every Snap (viral attribution).
+  // Skipped on the promo Snap itself (handled separately in /api/snap/zlank).
+  const homepageOrigin = (() => {
+    try {
+      return new URL(baseUrl).origin;
+    } catch {
+      return 'https://zlank.vercel.app';
+    }
+  })();
+  allElements['_zlank_sep'] = { type: 'separator', props: {} };
+  allElements['_zlank_footer'] = {
+    type: 'button',
+    props: { label: 'zlank.online', icon: 'star' },
+    on: {
+      press: { action: 'open_url', params: { target: homepageOrigin } },
+    },
+  };
+  childIds.push('_zlank_sep', '_zlank_footer');
 
   allElements['page'] = {
     type: 'stack',
