@@ -33,6 +33,7 @@ const BLOCK_OPTIONS: { type: BlockType; label: string; icon: string }[] = [
   { type: 'switch', label: 'Switch', icon: 'O' },
   { type: 'feedback', label: 'Feedback', icon: '@' },
   { type: 'chatbot', label: 'Chatbot', icon: 'C' },
+  { type: 'leaderboard', label: 'Leaderboard', icon: 'L' },
   { type: 'divider', label: 'Divider', icon: '-' },
 ];
 
@@ -115,6 +116,14 @@ function newBlock(type: BlockType, availablePageIds: string[] = []): Block {
           'You are a friendly builder coach. Reply briefly (max 2 sentences) and ask one curious follow-up about what they are making.',
         label: 'Send',
         placeholder: 'Type here...',
+      };
+    case 'leaderboard':
+      return {
+        type: 'leaderboard',
+        title: 'Live results',
+        source: 'votes',
+        pollBlockIdx: 0,
+        topN: 5,
       };
   }
 }
@@ -874,6 +883,37 @@ function BlockEditor({
               className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
             />
           </div>
+        </>
+      )}
+      {block.type === 'leaderboard' && (
+        <>
+          <input
+            value={block.title}
+            onChange={(e) => onChange({ title: e.target.value } as Partial<Block>)}
+            placeholder="Title (e.g. Live results)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <div className="flex gap-2">
+            <span className="self-center text-xs text-[#8aa0bd]">Poll block #</span>
+            <input
+              type="number"
+              value={block.pollBlockIdx}
+              onChange={(e) => onChange({ pollBlockIdx: Number(e.target.value) } as Partial<Block>)}
+              placeholder="0"
+              className="w-20 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+            <span className="self-center text-xs text-[#8aa0bd]">Top N:</span>
+            <input
+              type="number"
+              value={block.topN ?? 5}
+              onChange={(e) => onChange({ topN: Number(e.target.value) } as Partial<Block>)}
+              placeholder="5"
+              className="w-20 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+          </div>
+          <p className="text-[11px] text-[#5e7290]">
+            Pulls live tallies from a poll block on the same page. Index = position of the poll (0 = first block).
+          </p>
         </>
       )}
       {block.type === 'divider' && <p className="text-xs text-[#8aa0bd]">Visual separator. No fields.</p>}

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { parseRequest } from '@farcaster/snap/server';
 import { resolveSnap } from '@/lib/resolve-snap';
 import { docToSnap } from '@/lib/snap-spec';
-import { recordVote, appendChatLog, bumpStat } from '@/lib/kv';
+import { recordVote, appendChatLog, bumpStat, getVotes } from '@/lib/kv';
 import { evaluateGates, isGateRule, type GateResult } from '@/lib/gates';
 import { chat as llmChat } from '@/lib/llm';
 import type { SnapDoc, Block, ChartBar } from '@/lib/blocks';
@@ -51,6 +51,32 @@ const CORS_HEADERS = {
   'Access-Control-Expose-Headers': 'Link, Vary, Content-Type',
 };
 
+async function resolveLeaderboardsForPage(
+  doc: SnapDoc,
+  pageId: string | undefined,
+  snapId: string,
+): Promise<Map<number, Array<{ label: string; value: number }>> | undefined> {
+  const targetId = pageId || doc.pages[0]?.id;
+  const page = doc.pages.find((p) => p.id === targetId);
+  if (!page) return undefined;
+  const blocks = page.blocks
+    .map((block, idx) => ({ idx, block }))
+    .filter((b) => b.block.type === 'leaderboard');
+  if (blocks.length === 0) return undefined;
+  const out = new Map<number, Array<{ label: string; value: number }>>();
+  await Promise.all(
+    blocks.map(async ({ idx, block }) => {
+      if (block.type !== 'leaderboard') return;
+      const tallies = await getVotes(snapId, block.pollBlockIdx);
+      const sorted = Object.entries(tallies)
+        .sort(([, a], [, b]) => b - a)
+        .map(([label, value]) => ({ label, value }));
+      out.set(idx, sorted);
+    }),
+  );
+  return out;
+}
+
 async function resolveGatesForPage(
   doc: SnapDoc,
   pageId: string | undefined,
@@ -75,10 +101,12 @@ function snapJsonResponse(
   encoded: string,
   pageId?: string,
   gateResults?: Map<number, GateResult>,
+  leaderboardData?: Map<number, Array<{ label: string; value: number }>>,
 ): NextResponse {
   const snap = docToSnap(doc, `${origin}/api/snap/${encoded}`, {
     pageId,
     gateResults,
+    leaderboardData,
   });
   const linkHeader =
     `</api/snap/${encoded}>; rel="alternate"; type="${SNAP_MEDIA_TYPE}", ` +
@@ -167,10 +195,12 @@ export async function GET(
   // Content negotiation: Snap-aware clients ask for the snap media type.
   const accept = req.headers.get('accept') ?? '';
   if (accept.includes(SNAP_MEDIA_TYPE) || accept.includes('vnd.farcaster.snap')) {
-    // Fire-and-forget view counter (don't block render on Redis).
     void bumpStat(encoded, 'views');
-    const gateResults = await resolveGatesForPage(doc, pageId, undefined);
-    return snapJsonResponse(doc, origin, encoded, pageId, gateResults);
+    const [gateResults, leaderboardData] = await Promise.all([
+      resolveGatesForPage(doc, pageId, undefined),
+      resolveLeaderboardsForPage(doc, pageId, encoded),
+    ]);
+    return snapJsonResponse(doc, origin, encoded, pageId, gateResults, leaderboardData);
   }
 
   return htmlResponse(doc, origin, encoded);
@@ -298,13 +328,14 @@ export async function POST(
     return snapJsonResponse(buildAckDoc(doc, inputs), origin, encoded, pageId);
   }
 
-  // Any POST counts as an interaction (submit, vote, gate unlock, chat, etc).
   void bumpStat(encoded, 'interactions');
 
-  // Bare submit (e.g. Unlock button on a gated block) - re-render with gates
-  // evaluated against the now-known FID.
-  const gateResults = await resolveGatesForPage(doc, pageId, fid);
-  return snapJsonResponse(doc, origin, encoded, pageId, gateResults);
+  // Bare submit (Unlock button etc) - re-render with gates + fresh leaderboards.
+  const [gateResults, leaderboardData] = await Promise.all([
+    resolveGatesForPage(doc, pageId, fid),
+    resolveLeaderboardsForPage(doc, pageId, encoded),
+  ]);
+  return snapJsonResponse(doc, origin, encoded, pageId, gateResults, leaderboardData);
 }
 
 function buildResultsDoc(

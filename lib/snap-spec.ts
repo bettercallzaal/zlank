@@ -332,6 +332,28 @@ function blockToElements(
       ids.push(promptId, inputId, btnId);
       break;
     }
+    case 'leaderboard': {
+      // Resolved data is passed via opts.leaderboardData. If absent (no
+      // resolution available), render an empty-state text instead of a
+      // broken chart.
+      // The actual data is wired in by docToSnap below (it has access to opts).
+      // Here we just emit the placeholder; docToSnap replaces these elements.
+      const titleId = `${id}_title`;
+      const chartId = `${id}_chart`;
+      elements[titleId] = {
+        type: 'text',
+        props: { content: block.title, size: 'md', weight: 'bold' },
+      };
+      elements[chartId] = {
+        type: 'text',
+        props: {
+          content: 'No votes yet.',
+          size: 'sm',
+        },
+      };
+      ids.push(titleId, chartId);
+      break;
+    }
     case 'chatbot': {
       const titleId = `${id}_title`;
       const promptId = `${id}_prompt`;
@@ -372,6 +394,8 @@ export interface DocToSnapOpts {
   pageId?: string;
   /** Per-block-index gate results from POST handler. */
   gateResults?: Map<number, GateResult>;
+  /** Per-block-index resolved leaderboard data (label, value pairs). */
+  leaderboardData?: Map<number, Array<{ label: string; value: number }>>;
 }
 
 export function docToSnap(
@@ -409,6 +433,31 @@ export function docToSnap(
         return;
       }
     }
+
+    // Leaderboard needs async-resolved data; replace the placeholder text
+    // element with a real bar_chart when data is available.
+    if (block.type === 'leaderboard') {
+      const data = opts.leaderboardData?.get(idx);
+      const titleId = `b${idx}_title`;
+      const chartId = `b${idx}_chart`;
+      allElements[titleId] = {
+        type: 'text',
+        props: { content: block.title, size: 'md', weight: 'bold' },
+      };
+      const topN = block.topN ?? 5;
+      const bars = (data ?? []).slice(0, topN);
+      if (bars.length > 0) {
+        allElements[chartId] = { type: 'bar_chart', props: { bars } };
+      } else {
+        allElements[chartId] = {
+          type: 'text',
+          props: { content: 'No votes yet.', size: 'sm' },
+        };
+      }
+      childIds.push(titleId, chartId);
+      return;
+    }
+
     const { ids, elements } = blockToElements(block, idx, baseUrl);
     Object.assign(allElements, elements);
     childIds.push(...ids);

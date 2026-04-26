@@ -75,6 +75,12 @@ function lintBlock(block: Block, idx: number): string[] {
         issues.push(`${here}: chart needs at least 1 bar`);
       }
       break;
+    case 'leaderboard':
+      if (!block.title?.trim()) issues.push(`${here}: leaderboard title is empty`);
+      if (!Number.isFinite(block.pollBlockIdx) || block.pollBlockIdx < 0) {
+        issues.push(`${here}: leaderboard pollBlockIdx must be >= 0`);
+      }
+      break;
   }
   return issues;
 }

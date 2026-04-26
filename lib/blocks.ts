@@ -19,7 +19,8 @@ export type BlockType =
   | 'slider'
   | 'switch'
   | 'feedback'
-  | 'chatbot';
+  | 'chatbot'
+  | 'leaderboard';
 
 // Subset of the 34 Snap icons - the most useful for blocks.
 export const ICONS = [
@@ -145,6 +146,16 @@ export interface SwitchBlock {
   defaultChecked: boolean;
 }
 
+// Live tally pulled from a referenced poll block on the same page.
+// Renders as bar_chart sorted desc, top N. v1 source = 'votes' (poll).
+export interface LeaderboardBlock {
+  type: 'leaderboard';
+  title: string;
+  source: 'votes';
+  pollBlockIdx: number;
+  topN?: number;
+}
+
 // User chats with an LLM inline. Submit logs the message + LLM reply to
 // Redis (chatlog:{snapId}) and returns a Snap with the reply + same chatbot
 // block to keep the loop going. Stateless per-turn (Snap protocol has no
@@ -194,7 +205,8 @@ type AnyBlock =
   | SliderBlock
   | SwitchBlock
   | FeedbackBlock
-  | ChatbotBlock;
+  | ChatbotBlock
+  | LeaderboardBlock;
 
 // Optional `gate` lets a block require a token-balance check before render.
 // Evaluated server-side on POST; falsy on GET (no FID), so gated blocks
@@ -384,6 +396,14 @@ export function clampBlock(block: Block): Block {
         systemPrompt: block.systemPrompt.slice(0, 2000),
         label: block.label.slice(0, LABEL_MAX),
         placeholder: block.placeholder?.slice(0, 60),
+      };
+    case 'leaderboard':
+      return {
+        ...block,
+        title: block.title.slice(0, TITLE_MAX),
+        source: 'votes',
+        pollBlockIdx: Math.max(0, Math.floor(Number(block.pollBlockIdx) || 0)),
+        topN: Math.min(Math.max(Number(block.topN) || 5, 1), 6),
       };
   }
 }
