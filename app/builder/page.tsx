@@ -793,6 +793,80 @@ function BlockEditor({
           </select>
         </>
       )}
+      {block.type === 'feedback' && (
+        <>
+          <input
+            value={block.label}
+            onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)}
+            placeholder="Button label (e.g. Send feedback)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <input
+            value={block.prompt}
+            onChange={(e) => onChange({ prompt: e.target.value } as Partial<Block>)}
+            placeholder="Prompt (e.g. What should we add?)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <div className="flex gap-2">
+            <span className="text-sm text-[#8aa0bd] self-center">@</span>
+            <input
+              value={block.mention}
+              onChange={(e) => onChange({ mention: e.target.value.replace(/^@/, '') } as Partial<Block>)}
+              placeholder="zaal"
+              className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+          </div>
+          <input
+            value={block.prefix ?? ''}
+            onChange={(e) => onChange({ prefix: e.target.value } as Partial<Block>)}
+            placeholder="Prefix (e.g. feedback for zlank:)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <input
+            value={block.channelKey ?? ''}
+            onChange={(e) => onChange({ channelKey: e.target.value.replace(/^\//, '') } as Partial<Block>)}
+            placeholder="Channel key (optional, no leading /)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+        </>
+      )}
+      {block.type === 'chatbot' && (
+        <>
+          <input
+            value={block.title}
+            onChange={(e) => onChange({ title: e.target.value } as Partial<Block>)}
+            placeholder="Title (e.g. What are you building?)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <input
+            value={block.prompt}
+            onChange={(e) => onChange({ prompt: e.target.value } as Partial<Block>)}
+            placeholder="Subtitle / prompt"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <textarea
+            value={block.systemPrompt}
+            onChange={(e) => onChange({ systemPrompt: e.target.value } as Partial<Block>)}
+            placeholder="System prompt - frames the LLM"
+            rows={3}
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <div className="flex gap-2">
+            <input
+              value={block.label}
+              onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)}
+              placeholder="Button label"
+              className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+            <input
+              value={block.placeholder ?? ''}
+              onChange={(e) => onChange({ placeholder: e.target.value } as Partial<Block>)}
+              placeholder="Input placeholder"
+              className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+          </div>
+        </>
+      )}
       {block.type === 'divider' && <p className="text-xs text-[#8aa0bd]">Visual separator. No fields.</p>}
     </div>
   );
