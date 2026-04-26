@@ -244,6 +244,25 @@ export function docToSnap(doc: SnapDoc, baseUrl: string, pageId?: string) {
     childIds.push(...ids);
   });
 
+  // Auto-append "Built with Zlank" footer to every Snap (viral attribution).
+  // Skipped on the promo Snap itself (handled separately in /api/snap/zlank).
+  const homepageOrigin = (() => {
+    try {
+      return new URL(baseUrl).origin;
+    } catch {
+      return 'https://zlank.vercel.app';
+    }
+  })();
+  allElements['_zlank_sep'] = { type: 'separator', props: {} };
+  allElements['_zlank_footer'] = {
+    type: 'button',
+    props: { label: 'zlank.online', icon: 'star' },
+    on: {
+      press: { action: 'open_url', params: { target: homepageOrigin } },
+    },
+  };
+  childIds.push('_zlank_sep', '_zlank_footer');
+
   allElements['page'] = {
     type: 'stack',
     props: { direction: 'vertical', gap: 'md' },
