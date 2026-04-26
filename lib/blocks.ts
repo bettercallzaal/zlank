@@ -17,7 +17,8 @@ export type BlockType =
   | 'navigate'
   | 'progress'
   | 'slider'
-  | 'switch';
+  | 'switch'
+  | 'feedback';
 
 // Subset of the 34 Snap icons - the most useful for blocks.
 export const ICONS = [
@@ -61,6 +62,8 @@ export interface ShareBlock {
   label: string;
   text: string;
   icon?: IconName;
+  /** Optional Farcaster channel key (without leading /). */
+  channelKey?: string;
 }
 
 export interface ImageBlock {
@@ -141,6 +144,20 @@ export interface SwitchBlock {
   defaultChecked: boolean;
 }
 
+// User types feedback inline. Submit returns a one-tap "Open composer"
+// button that pre-fills the cast: "@{mention} {prefix} {text}".
+export interface FeedbackBlock {
+  type: 'feedback';
+  label: string;
+  prompt: string;
+  /** FC handle without @, e.g. "zaal". */
+  mention: string;
+  /** Boilerplate prepended to user text. e.g. "feedback for zlank:". */
+  prefix?: string;
+  /** Channel key (without /) to optionally route the cast. */
+  channelKey?: string;
+}
+
 type AnyBlock =
   | HeaderBlock
   | TextBlock
@@ -156,7 +173,8 @@ type AnyBlock =
   | NavigateBlock
   | ProgressBlock
   | SliderBlock
-  | SwitchBlock;
+  | SwitchBlock
+  | FeedbackBlock;
 
 // Optional `gate` lets a block require a token-balance check before render.
 // Evaluated server-side on POST; falsy on GET (no FID), so gated blocks
@@ -252,6 +270,7 @@ export function clampBlock(block: Block): Block {
         label: block.label.slice(0, LABEL_MAX),
         text: block.text.slice(0, SHARE_TEXT_MAX),
         icon: clampIcon(block.icon),
+        channelKey: block.channelKey?.replace(/^\//, '').slice(0, NAME_MAX),
       };
     case 'image':
       return {
@@ -327,6 +346,15 @@ export function clampBlock(block: Block): Block {
         ...block,
         label: block.label.slice(0, LABEL_MAX),
         defaultChecked: Boolean(block.defaultChecked),
+      };
+    case 'feedback':
+      return {
+        ...block,
+        label: block.label.slice(0, LABEL_MAX),
+        prompt: block.prompt.slice(0, QUESTION_MAX),
+        mention: String(block.mention || 'zaal').replace(/^@/, '').slice(0, NAME_MAX),
+        prefix: block.prefix?.slice(0, LABEL_MAX),
+        channelKey: block.channelKey?.replace(/^\//, '').slice(0, NAME_MAX),
       };
   }
 }

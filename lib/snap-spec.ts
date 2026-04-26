@@ -110,15 +110,15 @@ function blockToElements(
     case 'share': {
       const props: Record<string, unknown> = { label: block.label };
       props.icon = block.icon ?? 'share';
+      const composeParams: Record<string, unknown> = {
+        text: block.text,
+        embeds: [baseUrl],
+      };
+      if (block.channelKey) composeParams.channelKey = block.channelKey;
       elements[id] = {
         type: 'button',
         props,
-        on: {
-          press: {
-            action: 'compose_cast',
-            params: { text: block.text, embeds: [baseUrl] },
-          },
-        },
+        on: { press: { action: 'compose_cast', params: composeParams } },
       };
       ids.push(id);
       break;
@@ -300,6 +300,36 @@ function blockToElements(
         },
       };
       ids.push(switchId, btnId);
+      break;
+    }
+    case 'feedback': {
+      // Inline input + submit. POST handler reads `feedback_${idx}` and
+      // returns a follow-up Snap with a one-tap compose_cast button.
+      const promptId = `${id}_prompt`;
+      const inputId = `${id}_input`;
+      const btnId = `${id}_btn`;
+      elements[promptId] = {
+        type: 'text',
+        props: { content: block.prompt, size: 'md', weight: 'bold' },
+      };
+      elements[inputId] = {
+        type: 'input',
+        props: {
+          name: `feedback_${idx}`,
+          type: 'text',
+          label: block.label,
+          placeholder: 'Type your suggestion...',
+          maxLength: 240,
+        },
+      };
+      elements[btnId] = {
+        type: 'button',
+        props: { label: block.label || 'Send feedback', variant: 'primary', icon: 'message-circle' },
+        on: {
+          press: { action: 'submit', params: { target: baseUrl } },
+        },
+      };
+      ids.push(promptId, inputId, btnId);
       break;
     }
   }

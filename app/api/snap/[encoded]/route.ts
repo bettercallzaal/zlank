@@ -246,6 +246,25 @@ export async function POST(
     }
   }
 
+  const feedbackEntry = Object.entries(inputs).find(([k]) => k.startsWith('feedback_'));
+  if (feedbackEntry) {
+    const [fbKey, fbValue] = feedbackEntry;
+    const blockIdx = Number(fbKey.replace('feedback_', ''));
+    const text = String(fbValue ?? '').trim();
+    if (text) {
+      const targetPage = doc.pages.find((p) => p.id === (pageId || doc.pages[0]?.id));
+      const block = targetPage?.blocks[blockIdx];
+      if (block?.type === 'feedback') {
+        return snapJsonResponse(
+          buildFeedbackComposeDoc(doc, block, text),
+          origin,
+          encoded,
+          pageId,
+        );
+      }
+    }
+  }
+
   if (Object.keys(inputs).length > 0) {
     return snapJsonResponse(buildAckDoc(doc, inputs), origin, encoded, pageId);
   }
@@ -275,6 +294,36 @@ function buildResultsDoc(
   return {
     ...doc,
     pages: [{ id: 'results', blocks: newBlocks }],
+    confetti: true,
+  };
+}
+
+function buildFeedbackComposeDoc(
+  doc: SnapDoc,
+  block: { mention: string; prefix?: string; channelKey?: string },
+  text: string,
+): SnapDoc {
+  const mention = block.mention.replace(/^@/, '');
+  const prefix = block.prefix ? `${block.prefix} ` : '';
+  const cast = `@${mention} ${prefix}${text}`.slice(0, 1024);
+  const newBlocks: Block[] = [
+    {
+      type: 'header',
+      title: 'Ready to send',
+      subtitle: `Will tag @${mention}. Tap to open the composer.`,
+    },
+    { type: 'text', content: cast },
+    {
+      type: 'share',
+      label: 'Open composer',
+      text: cast,
+      icon: 'message-circle',
+      channelKey: block.channelKey,
+    },
+  ];
+  return {
+    ...doc,
+    pages: [{ id: 'feedback-confirm', blocks: newBlocks }],
     confetti: true,
   };
 }
