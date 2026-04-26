@@ -71,6 +71,7 @@ function migrateLoadedDoc(raw: unknown): SnapDoc | null {
       theme: (d.theme as SnapDoc['theme']) ?? 'purple',
       pages: [{ id: 'home', blocks: d.blocks as SnapDoc['pages'][number]['blocks'] }],
       confetti: d.confetti as boolean | undefined,
+      coin: d.coin as SnapDoc['coin'],
     };
   }
 
@@ -82,10 +83,36 @@ function migrateLoadedDoc(raw: unknown): SnapDoc | null {
       theme: (d.theme as SnapDoc['theme']) ?? 'purple',
       pages: d.pages as SnapDoc['pages'],
       confetti: d.confetti as boolean | undefined,
+      coin: d.coin as SnapDoc['coin'],
     };
   }
 
   return null;
+}
+
+export async function setSnapCoin(
+  id: string,
+  coin: { caip19: string; symbol?: string } | null,
+): Promise<{ updated: number; missing: boolean }> {
+  const c = await getClient();
+  if (!c) return { updated: 0, missing: true };
+  let updated = 0;
+  let missing = true;
+  for (const prefix of [KEY_PREFIX, SNAPDOC_PREFIX]) {
+    const raw = await c.get(prefix + id);
+    if (!raw) continue;
+    missing = false;
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      if (coin) parsed.coin = coin;
+      else delete parsed.coin;
+      await c.set(prefix + id, JSON.stringify(parsed));
+      updated += 1;
+    } catch (err) {
+      console.error('setSnapCoin parse', prefix + id, err);
+    }
+  }
+  return { updated, missing };
 }
 
 export async function loadSnap(id: string): Promise<SnapDoc | null> {
@@ -170,6 +197,48 @@ export async function appendChatLog(
   await c.lPush(key, JSON.stringify(entry));
   await c.lTrim(key, 0, CHATLOG_MAX - 1);
   await c.expire(key, 60 * 60 * 24 * 90);
+}
+
+const STATS_PREFIX = 'stats:';
+
+export interface SnapStats {
+  views: number;
+  interactions: number;
+  lastViewAt: number | null;
+  lastInteractionAt: number | null;
+}
+
+export async function bumpStat(
+  snapId: string,
+  field: 'views' | 'interactions',
+): Promise<void> {
+  const c = await getClient();
+  if (!c) return;
+  const key = STATS_PREFIX + snapId;
+  const tsField = field === 'views' ? 'lastViewAt' : 'lastInteractionAt';
+  await Promise.all([
+    c.hIncrBy(key, field, 1),
+    c.hSet(key, tsField, String(Date.now())),
+    c.expire(key, 60 * 60 * 24 * 365),
+  ]);
+}
+
+export async function getStats(snapId: string): Promise<SnapStats> {
+  const c = await getClient();
+  const empty: SnapStats = {
+    views: 0,
+    interactions: 0,
+    lastViewAt: null,
+    lastInteractionAt: null,
+  };
+  if (!c) return empty;
+  const raw = await c.hGetAll(STATS_PREFIX + snapId);
+  return {
+    views: Number(raw.views ?? 0),
+    interactions: Number(raw.interactions ?? 0),
+    lastViewAt: raw.lastViewAt ? Number(raw.lastViewAt) : null,
+    lastInteractionAt: raw.lastInteractionAt ? Number(raw.lastInteractionAt) : null,
+  };
 }
 
 export async function getChatLog(

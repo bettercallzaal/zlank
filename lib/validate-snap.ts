@@ -5,7 +5,7 @@ import type { SnapDoc, Block } from './blocks';
 
 // Source-doc lint - catches user input mistakes that snap-spec would silently
 // paper over (e.g. empty text content gets padded with a space at render).
-function lintBlock(block: Block, idx: number): string[] {
+function lintBlock(block: Block, idx: number, pageBlocks: Block[]): string[] {
   const issues: string[] = [];
   const here = `block ${idx} (${block.type})`;
   switch (block.type) {
@@ -75,6 +75,22 @@ function lintBlock(block: Block, idx: number): string[] {
         issues.push(`${here}: chart needs at least 1 bar`);
       }
       break;
+    case 'leaderboard': {
+      if (!block.title?.trim()) issues.push(`${here}: leaderboard title is empty`);
+      const pIdx = block.pollBlockIdx;
+      if (!Number.isFinite(pIdx) || pIdx < 0) {
+        issues.push(`${here}: leaderboard pollBlockIdx must be >= 0`);
+      } else if (pIdx >= pageBlocks.length) {
+        issues.push(
+          `${here}: leaderboard pollBlockIdx ${pIdx} out of range (page has ${pageBlocks.length} blocks)`,
+        );
+      } else if (pageBlocks[pIdx]?.type !== 'poll') {
+        issues.push(
+          `${here}: leaderboard pollBlockIdx ${pIdx} points at a ${pageBlocks[pIdx]?.type ?? '?'} block, not a poll`,
+        );
+      }
+      break;
+    }
   }
   return issues;
 }
@@ -112,7 +128,7 @@ export function validateDoc(doc: SnapDoc, baseUrl = 'https://zlank.online/api/sn
     // Source-doc lint first (catches user input mistakes regardless of how
     // snap-spec.ts handles them at render time).
     page.blocks.forEach((block, idx) => {
-      issues.push(...lintBlock(block, idx));
+      issues.push(...lintBlock(block, idx, page.blocks));
     });
 
     let snap: unknown;

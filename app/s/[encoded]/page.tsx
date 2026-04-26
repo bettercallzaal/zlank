@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { resolveSnap } from '@/lib/resolve-snap';
-import type { Block, SnapDoc } from '@/lib/blocks';
+import { getVotes } from '@/lib/kv';
+import type { Block, SnapDoc, ChartBar } from '@/lib/blocks';
 import type { Metadata } from 'next';
 
 interface PageProps {
@@ -60,11 +61,36 @@ export default async function SnapViewer({ params, searchParams }: SnapViewerPro
   const currentPage = doc.pages.find((p) => p.id === currentPageId);
   const blocks = currentPage?.blocks ?? doc.pages[0]?.blocks ?? [];
 
+  // Resolve leaderboard data on the server (parity with the inline Snap).
+  const leaderboardEntries = blocks
+    .map((b, idx) => ({ b, idx }))
+    .filter(({ b }) => b.type === 'leaderboard');
+  const leaderboardData = new Map<number, ChartBar[]>();
+  await Promise.all(
+    leaderboardEntries.map(async ({ b, idx }) => {
+      if (b.type !== 'leaderboard') return;
+      const tallies = await getVotes(encoded, b.pollBlockIdx);
+      leaderboardData.set(
+        idx,
+        Object.entries(tallies)
+          .sort(([, x], [, y]) => y - x)
+          .map(([label, value]) => ({ label, value })),
+      );
+    }),
+  );
+
   return (
     <main className="max-w-md mx-auto px-4 py-8 min-h-screen flex flex-col">
       <div className="space-y-3 flex-1">
         {blocks.map((block, i) => (
-          <BlockView key={i} block={block} accent={accent} encoded={encoded} />
+          <BlockView
+            key={i}
+            block={block}
+            accent={accent}
+            encoded={encoded}
+            idx={i}
+            leaderboardData={leaderboardData.get(i)}
+          />
         ))}
       </div>
       <footer className="mt-8 pt-4 border-t border-[#1f3252] text-xs text-[#8aa0bd] text-center">
@@ -77,7 +103,19 @@ export default async function SnapViewer({ params, searchParams }: SnapViewerPro
   );
 }
 
-function BlockView({ block, accent, encoded }: { block: Block; accent: string; encoded: string }) {
+function BlockView({
+  block,
+  accent,
+  encoded,
+  idx,
+  leaderboardData,
+}: {
+  block: Block;
+  accent: string;
+  encoded: string;
+  idx: number;
+  leaderboardData?: ChartBar[];
+}) {
   switch (block.type) {
     case 'header':
       return (
@@ -223,5 +261,117 @@ function BlockView({ block, accent, encoded }: { block: Block; accent: string; e
           <input type="checkbox" defaultChecked={block.defaultChecked} style={{ accentColor: accent }} />
         </label>
       );
+    case 'chart': {
+      const total = block.bars.reduce((s, b) => s + b.value, 0) || 1;
+      return (
+        <div className="bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3 space-y-2">
+          <div className="font-bold text-sm" style={{ color: accent }}>{block.title}</div>
+          {block.bars.map((bar, i) => {
+            const pct = (bar.value / Math.max(...block.bars.map((b) => b.value), 1)) * 100;
+            return (
+              <div key={i} className="space-y-0.5">
+                <div className="flex justify-between text-xs">
+                  <span>{bar.label}</span>
+                  <span className="text-[#8aa0bd]">{bar.value}</span>
+                </div>
+                <div className="h-2 bg-[#1f3252] rounded">
+                  <div className="h-full rounded" style={{ width: `${pct}%`, background: accent }} />
+                </div>
+              </div>
+            );
+          })}
+          <div className="text-[11px] text-[#5e7290] pt-1">total: {total}</div>
+        </div>
+      );
+    }
+    case 'toggle':
+      return (
+        <div className="bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3 space-y-2">
+          {block.label && <div className="text-sm font-bold">{block.label}</div>}
+          <div className={`flex flex-wrap gap-2 ${block.orientation === 'vertical' ? 'flex-col' : ''}`}>
+            {block.options.map((opt, i) => (
+              <button
+                key={i}
+                className="bg-[#0a1628] border border-[#1f3252] rounded px-3 py-1.5 text-sm hover:border-[#f5a623] transition"
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    case 'feedback':
+      return (
+        <div className="bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3 space-y-2">
+          <div className="text-sm font-bold">{block.prompt}</div>
+          <input
+            placeholder="Type your feedback..."
+            disabled
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 text-sm"
+          />
+          <button
+            disabled
+            className="w-full bg-[#1f3252] text-[#8aa0bd] rounded px-3 py-2 text-sm cursor-not-allowed"
+          >
+            {block.label}
+          </button>
+          <p className="text-[11px] text-[#5e7290]">
+            Tags @{block.mention}. Send via Snap-aware Farcaster client.
+          </p>
+        </div>
+      );
+    case 'chatbot':
+      return (
+        <div className="bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3 space-y-2">
+          <div className="font-bold" style={{ color: accent }}>{block.title}</div>
+          <div className="text-xs text-[#8aa0bd]">{block.prompt}</div>
+          <input
+            placeholder={block.placeholder ?? 'Type here...'}
+            disabled
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 text-sm"
+          />
+          <button
+            disabled
+            className="w-full bg-[#1f3252] text-[#8aa0bd] rounded px-3 py-2 text-sm cursor-not-allowed"
+          >
+            {block.label}
+          </button>
+          <p className="text-[11px] text-[#5e7290]">
+            Live in Snap-aware Farcaster clients.{' '}
+            <Link href={`/chat-log/${encoded}`} className="underline">
+              View log
+            </Link>
+          </p>
+        </div>
+      );
+    case 'leaderboard': {
+      const bars = leaderboardData ?? [];
+      const topN = block.topN ?? 5;
+      const visible = bars.slice(0, topN);
+      return (
+        <div className="bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3 space-y-2">
+          <div className="font-bold text-sm" style={{ color: accent }}>{block.title}</div>
+          {visible.length === 0 ? (
+            <p className="text-xs text-[#8aa0bd]">No votes yet.</p>
+          ) : (
+            visible.map((bar, i) => {
+              const max = Math.max(...visible.map((b) => b.value), 1);
+              const pct = (bar.value / max) * 100;
+              return (
+                <div key={i} className="space-y-0.5">
+                  <div className="flex justify-between text-xs">
+                    <span>#{i + 1} {bar.label}</span>
+                    <span className="text-[#8aa0bd]">{bar.value}</span>
+                  </div>
+                  <div className="h-2 bg-[#1f3252] rounded">
+                    <div className="h-full rounded" style={{ width: `${pct}%`, background: accent }} />
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      );
+    }
   }
 }

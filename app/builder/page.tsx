@@ -33,6 +33,7 @@ const BLOCK_OPTIONS: { type: BlockType; label: string; icon: string }[] = [
   { type: 'switch', label: 'Switch', icon: 'O' },
   { type: 'feedback', label: 'Feedback', icon: '@' },
   { type: 'chatbot', label: 'Chatbot', icon: 'C' },
+  { type: 'leaderboard', label: 'Leaderboard', icon: 'L' },
   { type: 'divider', label: 'Divider', icon: '-' },
 ];
 
@@ -115,6 +116,14 @@ function newBlock(type: BlockType, availablePageIds: string[] = []): Block {
           'You are a friendly builder coach. Reply briefly (max 2 sentences) and ask one curious follow-up about what they are making.',
         label: 'Send',
         placeholder: 'Type here...',
+      };
+    case 'leaderboard':
+      return {
+        type: 'leaderboard',
+        title: 'Live results',
+        source: 'votes',
+        pollBlockIdx: 0,
+        topN: 5,
       };
   }
 }
@@ -395,6 +404,43 @@ export default function Builder() {
             Confetti effect on render
           </label>
 
+          <details className="border border-[#1f3252] rounded">
+            <summary className="cursor-pointer px-2 py-1 text-xs text-[#8aa0bd] hover:text-[#f5a623]">
+              Coin {doc.coin?.caip19 ? `(buy $${doc.coin.symbol || 'token'} button auto-injected)` : '(none)'}
+            </summary>
+            <div className="p-2 space-y-2 text-xs">
+              <input
+                value={doc.coin?.caip19 ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value.trim();
+                  setDoc((d) => ({
+                    ...d,
+                    coin: v ? { ...(d.coin ?? {}), caip19: v } : undefined,
+                  }));
+                }}
+                placeholder="CAIP-19 (e.g. eip155:8453/erc20:0x...)"
+                className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1"
+              />
+              <input
+                value={doc.coin?.symbol ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value.trim();
+                  setDoc((d) => ({
+                    ...d,
+                    coin: d.coin ? { ...d.coin, symbol: v } : undefined,
+                  }));
+                }}
+                placeholder="Symbol (e.g. ZBL)"
+                className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1"
+                disabled={!doc.coin?.caip19}
+              />
+              <p className="text-[11px] text-[#5e7290]">
+                When set, every page auto-prepends a "Buy ${doc.coin?.symbol || 'token'}" button using the Snap{' '}
+                <code>swap_token</code> action. Launch a coin via Zora/Clanker/Empire Builder, then paste the CAIP-19 here.
+              </p>
+            </div>
+          </details>
+
           <div className="border-t border-[#1f3252] pt-3 space-y-2">
             <div className="flex items-center justify-between">
               <h3 className="text-xs text-[#8aa0bd] uppercase tracking-wide">Pages</h3>
@@ -620,10 +666,14 @@ function BlockEditor({
 
       {block.type === 'image' && (
         <>
+          <ImageUploader
+            currentUrl={block.url}
+            onUploaded={(url) => onChange({ url } as Partial<Block>)}
+          />
           <input
             value={block.url}
             onChange={(e) => onChange({ url: e.target.value } as Partial<Block>)}
-            placeholder="https://image.url"
+            placeholder="https://image.url (or upload above)"
             className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
           />
           <input
@@ -876,9 +926,112 @@ function BlockEditor({
           </div>
         </>
       )}
+      {block.type === 'leaderboard' && (
+        <>
+          <input
+            value={block.title}
+            onChange={(e) => onChange({ title: e.target.value } as Partial<Block>)}
+            placeholder="Title (e.g. Live results)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <div className="flex gap-2">
+            <span className="self-center text-xs text-[#8aa0bd]">Poll block #</span>
+            <input
+              type="number"
+              value={block.pollBlockIdx}
+              onChange={(e) => onChange({ pollBlockIdx: Number(e.target.value) } as Partial<Block>)}
+              placeholder="0"
+              className="w-20 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+            <span className="self-center text-xs text-[#8aa0bd]">Top N:</span>
+            <input
+              type="number"
+              value={block.topN ?? 5}
+              onChange={(e) => onChange({ topN: Number(e.target.value) } as Partial<Block>)}
+              placeholder="5"
+              className="w-20 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+          </div>
+          <p className="text-[11px] text-[#5e7290]">
+            Pulls live tallies from a poll block on the same page. Index = position of the poll (0 = first block).
+          </p>
+        </>
+      )}
       {block.type === 'divider' && <p className="text-xs text-[#8aa0bd]">Visual separator. No fields.</p>}
 
       <GateEditor block={block} onChange={onChange} />
+    </div>
+  );
+}
+
+function ImageUploader({
+  currentUrl,
+  onUploaded,
+}: {
+  currentUrl: string;
+  onUploaded: (url: string) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleFile(file: File) {
+    const MAX = 4 * 1024 * 1024;
+    const ALLOWED = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    if (file.size > MAX) {
+      setErr(`File too large (${Math.round(file.size / 1024)} KB, max 4 MB)`);
+      return;
+    }
+    if (file.type && !ALLOWED.includes(file.type)) {
+      setErr(`Unsupported type: ${file.type}`);
+      return;
+    }
+    setUploading(true);
+    setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      const data = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      onUploaded(data.url);
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <label className="px-2 py-1 bg-[#0a1628] border border-[#1f3252] rounded text-xs cursor-pointer hover:bg-[#1f3252]">
+          {uploading ? 'Uploading...' : 'Upload image'}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleFile(f);
+              e.target.value = '';
+            }}
+            disabled={uploading}
+            className="hidden"
+          />
+        </label>
+        {currentUrl && (
+          <a
+            href={currentUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-[#8aa0bd] underline truncate max-w-[180px]"
+          >
+            {currentUrl.replace(/^https?:\/\//, '').slice(0, 40)}
+          </a>
+        )}
+      </div>
+      {err && <p className="text-[11px] text-red-400">{err}</p>}
     </div>
   );
 }
