@@ -1,7 +1,83 @@
 import { validateSnapResponse, snapResponseSchema } from '@farcaster/snap';
 import { snapJsonRenderCatalog } from '@farcaster/snap/ui';
 import { docToSnap } from './snap-spec';
-import type { SnapDoc } from './blocks';
+import type { SnapDoc, Block } from './blocks';
+
+// Source-doc lint - catches user input mistakes that snap-spec would silently
+// paper over (e.g. empty text content gets padded with a space at render).
+function lintBlock(block: Block, idx: number): string[] {
+  const issues: string[] = [];
+  const here = `block ${idx} (${block.type})`;
+  switch (block.type) {
+    case 'text':
+      if (!block.content?.trim()) issues.push(`${here}: text content is empty`);
+      break;
+    case 'header':
+      if (!block.title?.trim()) issues.push(`${here}: header title is empty`);
+      break;
+    case 'link':
+      if (!block.label?.trim()) issues.push(`${here}: link label is empty`);
+      if (!/^https?:\/\//.test(block.url)) issues.push(`${here}: link url must start with https://`);
+      break;
+    case 'share':
+      if (!block.label?.trim()) issues.push(`${here}: share label is empty`);
+      if (!block.text?.trim()) issues.push(`${here}: share cast text is empty`);
+      break;
+    case 'image':
+      if (!block.url?.trim()) issues.push(`${here}: image url is empty`);
+      break;
+    case 'music':
+      if (!block.url?.trim()) issues.push(`${here}: music url is empty`);
+      if (!/^https?:\/\//.test(block.url)) issues.push(`${here}: music url must start with https://`);
+      break;
+    case 'artist':
+      if (!Number.isFinite(block.fid) || block.fid <= 0) {
+        issues.push(`${here}: artist fid must be a positive number`);
+      }
+      if (!block.displayName?.trim()) issues.push(`${here}: artist displayName is empty`);
+      break;
+    case 'poll':
+      if (!block.question?.trim()) issues.push(`${here}: poll question is empty`);
+      if (!Array.isArray(block.options) || block.options.length < 2) {
+        issues.push(`${here}: poll needs at least 2 options`);
+      }
+      break;
+    case 'toggle':
+      if (!Array.isArray(block.options) || block.options.length < 2) {
+        issues.push(`${here}: toggle needs at least 2 options`);
+      }
+      break;
+    case 'feedback':
+      if (!block.mention?.trim()) issues.push(`${here}: feedback mention is empty`);
+      if (!block.prompt?.trim()) issues.push(`${here}: feedback prompt is empty`);
+      break;
+    case 'chatbot':
+      if (!block.title?.trim()) issues.push(`${here}: chatbot title is empty`);
+      if (!block.systemPrompt?.trim()) {
+        issues.push(`${here}: chatbot systemPrompt is empty`);
+      }
+      break;
+    case 'navigate':
+      if (!block.pageId?.trim()) issues.push(`${here}: navigate pageId is empty`);
+      break;
+    case 'progress':
+      if (!Number.isFinite(block.max) || block.max <= 0) {
+        issues.push(`${here}: progress max must be > 0`);
+      }
+      break;
+    case 'slider':
+      if (block.min > block.max) {
+        issues.push(`${here}: slider min (${block.min}) must be <= max (${block.max})`);
+      }
+      break;
+    case 'chart':
+      if (!Array.isArray(block.bars) || block.bars.length === 0) {
+        issues.push(`${here}: chart needs at least 1 bar`);
+      }
+      break;
+  }
+  return issues;
+}
 
 export interface ValidatePageResult {
   pageId: string;
@@ -32,6 +108,13 @@ export function validateDoc(doc: SnapDoc, baseUrl = 'https://zlank.online/api/sn
 
   for (const page of doc.pages) {
     const issues: string[] = [];
+
+    // Source-doc lint first (catches user input mistakes regardless of how
+    // snap-spec.ts handles them at render time).
+    page.blocks.forEach((block, idx) => {
+      issues.push(...lintBlock(block, idx));
+    });
+
     let snap: unknown;
     try {
       snap = docToSnap(doc, baseUrl, { pageId: page.id });
