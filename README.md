@@ -1,36 +1,138 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Zlank
 
-## Getting Started
+No-code builder for Farcaster Snaps. Stack blocks. Hit Deploy. Share to feed.
 
-First, run the development server:
+Live: [zlank.vercel.app](https://zlank.vercel.app)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## What it does
+
+Build interactive in-feed Farcaster Snaps without writing code:
+
+1. Open the builder
+2. Pick blocks (header, text, link, music, artist, poll, bar chart, toggle, share, image, divider)
+3. Edit fields inline with a live preview
+4. Hit Deploy - your Snap goes live at `zlank.vercel.app/api/snap/<6-char-id>`
+5. Share to feed - drops it as a cast embed, renders inline in Snap-aware Farcaster clients
+
+Same URL serves:
+- **Snap JSON** to clients that send `Accept: application/vnd.farcaster.snap+json` (renders inline UI in feed)
+- **HTML** with OG tags + `Link rel="alternate"` for everything else (browsers, link previews)
+
+No `fc:miniapp` meta tag - that forces the Mini App embed (image+button) render and prevents inline Snap rendering.
+
+## Block types
+
+| Block | What it does |
+|---|---|
+| **Header** | Title + subtitle in a styled item card |
+| **Text** | Plain text content (max 320 chars) |
+| **Link** | Button with URL + icon picker + primary/secondary variant |
+| **Share** | Compose-cast button with prefilled text + embed |
+| **Image** | HTTPS image with aspect ratio (1:1 / 16:9 / 4:3 / 9:16) |
+| **Music** | Spotify / Tortoise / SoundCloud URL with icon |
+| **Artist** | Farcaster FID + name -> view-profile button |
+| **Poll** | Question + 2-4 options + submit button |
+| **Bar chart** | Up to 6 bars with label + value (data viz) |
+| **Toggle** | Toggle group with 2-6 options, horizontal or vertical |
+| **Divider** | Visual separator |
+
+Plus snap-level **Confetti effect** on render.
+
+## Stack
+
+- **Next.js 16** + React 19 + Tailwind v4
+- **`@farcaster/snap`** v2.1.1 - Snap protocol types + spec
+- **`@farcaster/snap-hono`** v2.0.5 - reference implementation (we use the schemas, ship our own handler)
+- **`@farcaster/miniapp-sdk`** v0.3.0 - Mini App context detection + Quick Auth + composeCast
+- **Vercel Marketplace Redis** (Upstash) - short-ID lookup via `nanoid(6)`
+- **Vercel** - hosting (Hobby tier)
+
+## Architecture
+
+```
+GET /api/snap/[id]
+  - Accept: application/vnd.farcaster.snap+json -> Snap JSON inline render
+  - Accept: text/html (default) -> HTML with OG + Link rel="alternate"
+
+POST /api/snap/[id]
+  - Always returns Snap JSON (for in-snap interactions like vote submit)
+
+POST /api/snaps
+  - Body: { doc: SnapDoc }
+  - Stores in Redis with 6-char nanoid key
+  - Returns: { id, short: true }
+
+GET /s/[id]
+  - HTML viewer page (Mini App webview / browser fallback)
+  - Renders blocks visually for non-Snap-aware clients
+
+GET /api/og/[id]
+  - Dynamic OG image via placehold.co fallback (next/og has Turbopack edge issue)
+
+GET /.well-known/farcaster.json
+  - Mini App manifest (account association placeholder, sign for verified badge)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+URL convention: 6-char `nanoid` short IDs after first deploy. Old URL-encoded base64 still resolves forever (resolveSnap tries KV first, falls back to base64 decode).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Local dev
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install
+cp .env.example .env.local
+npm run dev   # http://localhost:3000
+```
 
-## Learn More
+Set `REDIS_URL` in `.env.local` for short URLs (or skip - falls back to base64-encoded URLs).
 
-To learn more about Next.js, take a look at the following resources:
+## Deploy
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+vercel              # link
+vercel --prod       # ship
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+After first deploy, click "Storage" in Vercel project → add Marketplace Redis (free tier 256MB, 10k commands/day) → connect to project. `REDIS_URL` injected automatically.
 
-## Deploy on Vercel
+## Roadmap
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+**Done (v0)**
+- 11 block types + confetti effect
+- Snap protocol + Mini App embed dual-render from same URL
+- Short URLs via Redis
+- Open access (any Farcaster FID can build)
+- Live preview, drag-reorder via up/dn buttons
+- Mini App context detection + Quick Auth fallback
+- CORS for emulator + cross-origin clients
+- OG image with title overlay
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**Next (v0.5)**
+- Sign In With Farcaster + dashboard
+- Edit existing Snap (stable URL, change blocks, redeploy)
+- Vote tallying for Poll + Toggle blocks (write to Redis)
+- 7-day expiry + paid extension tier
+- Custom domain (zlank.online)
+- Dynamic OG image with logos / charts (when next/og + Turbopack edge fix lands)
+- Mini App account association sign for verified badge + directory listing
+
+**v1**
+- Snap Gallery (public discovery)
+- Cron Snaps (auto-post on schedule)
+- Event-driven Snaps (react to onchain events)
+
+**v2**
+- Token block (Clanker integration)
+- Empire Builder leaderboard block
+- Multi-chain (Base + Solana + Arbitrum)
+- XMTP DMs + Snapshot governance proposals
+- Agent-authored Snaps
+
+## License
+
+MIT
+
+## Acknowledgments
+
+Snap UI patterns inspired by `duodo-snap` and `nouns-snap` (working Snap reference impls). Snap protocol research synthesized from official Farcaster docs + emulator testing.
+
+Built by [@zaal](https://farcaster.xyz/zaal) for the ZAO ecosystem.

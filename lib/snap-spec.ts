@@ -1,7 +1,4 @@
-import type { SnapDoc, Block } from './blocks.js';
-
-// Convert Zlank block list into Farcaster Snap UI JSON.
-// Each block becomes 1-3 elements in the ui.elements tree.
+import type { SnapDoc, Block } from './blocks';
 
 interface Element {
   type: string;
@@ -37,18 +34,24 @@ function blockToElements(
       break;
     }
     case 'link': {
+      const props: Record<string, unknown> = { label: block.label };
+      if (block.variant) props.variant = block.variant;
+      if (block.icon) props.icon = block.icon;
+      else props.icon = 'external-link';
       elements[id] = {
         type: 'button',
-        props: { label: block.label, variant: 'primary', icon: 'external-link' },
+        props,
         on: { press: { action: 'open_url', params: { target: block.url } } },
       };
       ids.push(id);
       break;
     }
     case 'share': {
+      const props: Record<string, unknown> = { label: block.label };
+      props.icon = block.icon ?? 'share';
       elements[id] = {
         type: 'button',
-        props: { label: block.label, icon: 'share' },
+        props,
         on: {
           press: {
             action: 'compose_cast',
@@ -75,7 +78,11 @@ function blockToElements(
     case 'music': {
       elements[id] = {
         type: 'button',
-        props: { label: block.label || 'Listen', icon: 'play', variant: 'primary' },
+        props: {
+          label: block.label || 'Listen',
+          icon: block.icon ?? 'play',
+          variant: 'primary',
+        },
         on: { press: { action: 'open_url', params: { target: block.url } } },
       };
       ids.push(id);
@@ -107,7 +114,7 @@ function blockToElements(
       elements[inputId] = {
         type: 'input',
         props: {
-          name: 'vote',
+          name: `vote_${idx}`,
           type: 'text',
           label: 'Your vote',
           placeholder: block.options.join(' / '),
@@ -126,6 +133,35 @@ function blockToElements(
       ids.push(qId, inputId, btnId);
       break;
     }
+    case 'chart': {
+      const titleId = `${id}_title`;
+      const chartId = `${id}_chart`;
+      elements[titleId] = {
+        type: 'text',
+        props: { content: block.title, size: 'md', weight: 'bold' },
+      };
+      elements[chartId] = {
+        type: 'bar_chart',
+        props: {
+          bars: block.bars,
+        },
+      };
+      ids.push(titleId, chartId);
+      break;
+    }
+    case 'toggle': {
+      elements[id] = {
+        type: 'toggle_group',
+        props: {
+          name: `toggle_${idx}`,
+          label: block.label,
+          options: block.options,
+          orientation: block.orientation ?? 'horizontal',
+        },
+      };
+      ids.push(id);
+      break;
+    }
   }
 
   return { ids, elements };
@@ -141,19 +177,24 @@ export function docToSnap(doc: SnapDoc, baseUrl: string) {
     childIds.push(...ids);
   });
 
-  // Wrap blocks in a vertical stack root.
   allElements['page'] = {
     type: 'stack',
     props: { direction: 'vertical', gap: 'md' },
     children: childIds,
   };
 
-  return {
-    version: '1.0' as const,
+  const out: Record<string, unknown> = {
+    version: '1.0',
     theme: { accent: doc.theme },
     ui: {
       root: 'page',
       elements: allElements,
     },
   };
+
+  if (doc.confetti) {
+    out.effects = ['confetti'];
+  }
+
+  return out;
 }

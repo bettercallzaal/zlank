@@ -1,6 +1,4 @@
 // Block schema for the Zlank builder.
-// Each block represents one piece of a Snap. Builder UI maps to these,
-// renderer (lib/snap-spec.ts) maps these to Snap UI elements.
 
 export type BlockType =
   | 'header'
@@ -11,7 +9,22 @@ export type BlockType =
   | 'divider'
   | 'music'
   | 'artist'
-  | 'poll';
+  | 'poll'
+  | 'chart'
+  | 'toggle';
+
+// Subset of the 34 Snap icons - the most useful for blocks.
+export const ICONS = [
+  'star', 'heart', 'check', 'x', 'info', 'alert-triangle',
+  'arrow-right', 'arrow-left', 'external-link', 'chevron-right', 'refresh-cw',
+  'message-circle', 'repeat', 'share', 'user', 'users',
+  'trophy', 'zap', 'flame', 'gift',
+  'image', 'play', 'pause',
+  'wallet', 'coins',
+  'plus', 'minus', 'bookmark', 'clock',
+  'thumbs-up', 'thumbs-down', 'trending-up', 'trending-down',
+] as const;
+export type IconName = (typeof ICONS)[number];
 
 export interface HeaderBlock {
   type: 'header';
@@ -28,12 +41,15 @@ export interface LinkBlock {
   type: 'link';
   label: string;
   url: string;
+  icon?: IconName;
+  variant?: 'primary' | 'secondary';
 }
 
 export interface ShareBlock {
   type: 'share';
   label: string;
   text: string;
+  icon?: IconName;
 }
 
 export interface ImageBlock {
@@ -51,6 +67,7 @@ export interface MusicBlock {
   type: 'music';
   url: string;
   label: string;
+  icon?: IconName;
 }
 
 export interface ArtistBlock {
@@ -66,6 +83,24 @@ export interface PollBlock {
   options: string[];
 }
 
+export interface ChartBar {
+  label: string;
+  value: number;
+}
+
+export interface ChartBlock {
+  type: 'chart';
+  title: string;
+  bars: ChartBar[];
+}
+
+export interface ToggleBlock {
+  type: 'toggle';
+  label: string;
+  options: string[];
+  orientation?: 'horizontal' | 'vertical';
+}
+
 export type Block =
   | HeaderBlock
   | TextBlock
@@ -75,13 +110,20 @@ export type Block =
   | DividerBlock
   | MusicBlock
   | ArtistBlock
-  | PollBlock;
+  | PollBlock
+  | ChartBlock
+  | ToggleBlock;
+
+export type ThemeAccent =
+  | 'purple' | 'amber' | 'blue' | 'green' | 'red' | 'pink' | 'teal' | 'gray';
 
 export interface SnapDoc {
   version: 1;
   title: string;
-  theme: 'purple' | 'amber' | 'blue' | 'green' | 'red' | 'pink' | 'teal' | 'gray';
+  theme: ThemeAccent;
   blocks: Block[];
+  /** Snap-level effects applied on render. Currently spec supports 'confetti'. */
+  confetti?: boolean;
 }
 
 export const DEFAULT_SNAP: SnapDoc = {
@@ -91,8 +133,8 @@ export const DEFAULT_SNAP: SnapDoc = {
   blocks: [
     { type: 'header', title: 'Hello from Zlank', subtitle: 'A Farcaster Snap built in 30 seconds' },
     { type: 'text', content: 'Edit blocks on the left. Hit Deploy to share to feed.' },
-    { type: 'link', label: 'Visit Zlank', url: 'https://zlank.online' },
-    { type: 'share', label: 'Share', text: 'Just built my first Snap with Zlank' },
+    { type: 'link', label: 'Visit Zlank', url: 'https://zlank.online', icon: 'external-link', variant: 'primary' },
+    { type: 'share', label: 'Share', text: 'Just built my first Snap with Zlank', icon: 'share' },
   ],
 };
 
@@ -106,17 +148,22 @@ const QUESTION_MAX = 200;
 const OPTION_MAX = 60;
 const NAME_MAX = 60;
 const URL_MAX = 2048;
+const CHART_BARS_MAX = 6;
+const TOGGLE_OPTIONS_MAX = 6;
 
 function clampUrl(url: string): string {
   return url.slice(0, URL_MAX);
 }
 
-function clampOptions(options: string[]): string[] {
+function clampOptions(options: string[], minCount = 2, maxCount = 4): string[] {
   const clamped = options.map((o) => o.slice(0, OPTION_MAX));
-  if (clamped.length < 2) {
-    while (clamped.length < 2) clamped.push(`Option ${clamped.length + 1}`);
-  }
-  return clamped.slice(0, 4);
+  while (clamped.length < minCount) clamped.push(`Option ${clamped.length + 1}`);
+  return clamped.slice(0, maxCount);
+}
+
+function clampIcon(icon: IconName | undefined): IconName | undefined {
+  if (!icon) return undefined;
+  return ICONS.includes(icon) ? icon : undefined;
 }
 
 export function clampBlock(block: Block): Block {
@@ -134,12 +181,15 @@ export function clampBlock(block: Block): Block {
         ...block,
         label: block.label.slice(0, LABEL_MAX),
         url: clampUrl(block.url),
+        icon: clampIcon(block.icon),
+        variant: block.variant === 'primary' ? 'primary' : 'secondary',
       };
     case 'share':
       return {
         ...block,
         label: block.label.slice(0, LABEL_MAX),
         text: block.text.slice(0, SHARE_TEXT_MAX),
+        icon: clampIcon(block.icon),
       };
     case 'image':
       return {
@@ -154,6 +204,7 @@ export function clampBlock(block: Block): Block {
         ...block,
         label: block.label.slice(0, LABEL_MAX),
         url: clampUrl(block.url),
+        icon: clampIcon(block.icon),
       };
     case 'artist':
       return {
@@ -166,7 +217,25 @@ export function clampBlock(block: Block): Block {
       return {
         ...block,
         question: block.question.slice(0, QUESTION_MAX),
-        options: clampOptions(block.options),
+        options: clampOptions(block.options, 2, 4),
+      };
+    case 'chart':
+      return {
+        ...block,
+        title: block.title.slice(0, TITLE_MAX),
+        bars: block.bars
+          .slice(0, CHART_BARS_MAX)
+          .map((b) => ({
+            label: String(b.label).slice(0, 40),
+            value: Math.max(0, Number(b.value) || 0),
+          })),
+      };
+    case 'toggle':
+      return {
+        ...block,
+        label: block.label.slice(0, LABEL_MAX),
+        options: clampOptions(block.options, 2, TOGGLE_OPTIONS_MAX),
+        orientation: block.orientation === 'vertical' ? 'vertical' : 'horizontal',
       };
   }
 }
