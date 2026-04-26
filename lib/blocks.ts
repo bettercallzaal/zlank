@@ -11,7 +11,8 @@ export type BlockType =
   | 'artist'
   | 'poll'
   | 'chart'
-  | 'toggle';
+  | 'toggle'
+  | 'navigate';
 
 // Subset of the 34 Snap icons - the most useful for blocks.
 export const ICONS = [
@@ -101,6 +102,14 @@ export interface ToggleBlock {
   orientation?: 'horizontal' | 'vertical';
 }
 
+export interface NavigateBlock {
+  type: 'navigate';
+  label: string;
+  pageId: string;
+  icon?: IconName;
+  variant?: 'primary' | 'secondary';
+}
+
 export type Block =
   | HeaderBlock
   | TextBlock
@@ -112,16 +121,23 @@ export type Block =
   | ArtistBlock
   | PollBlock
   | ChartBlock
-  | ToggleBlock;
+  | ToggleBlock
+  | NavigateBlock;
 
 export type ThemeAccent =
   | 'purple' | 'amber' | 'blue' | 'green' | 'red' | 'pink' | 'teal' | 'gray';
+
+export interface SnapPage {
+  id: string;
+  title?: string;
+  blocks: Block[];
+}
 
 export interface SnapDoc {
   version: 1;
   title: string;
   theme: ThemeAccent;
-  blocks: Block[];
+  pages: SnapPage[];
   /** Snap-level effects applied on render. Currently spec supports 'confetti'. */
   confetti?: boolean;
 }
@@ -130,11 +146,16 @@ export const DEFAULT_SNAP: SnapDoc = {
   version: 1,
   title: 'My Snap',
   theme: 'purple',
-  blocks: [
-    { type: 'header', title: 'Hello from Zlank', subtitle: 'A Farcaster Snap built in 30 seconds' },
-    { type: 'text', content: 'Edit blocks on the left. Hit Deploy to share to feed.' },
-    { type: 'link', label: 'Visit Zlank', url: 'https://zlank.online', icon: 'external-link', variant: 'primary' },
-    { type: 'share', label: 'Share', text: 'Just built my first Snap with Zlank', icon: 'share' },
+  pages: [
+    {
+      id: 'home',
+      blocks: [
+        { type: 'header', title: 'Hello from Zlank', subtitle: 'A Farcaster Snap built in 30 seconds' },
+        { type: 'text', content: 'Edit blocks on the left. Hit Deploy to share to feed.' },
+        { type: 'link', label: 'Visit Zlank', url: 'https://zlank.online', icon: 'external-link', variant: 'primary' },
+        { type: 'share', label: 'Share', text: 'Just built my first Snap with Zlank', icon: 'share' },
+      ],
+    },
   ],
 };
 
@@ -237,5 +258,17 @@ export function clampBlock(block: Block): Block {
         options: clampOptions(block.options, 2, TOGGLE_OPTIONS_MAX),
         orientation: block.orientation === 'vertical' ? 'vertical' : 'horizontal',
       };
+    case 'navigate':
+      return {
+        ...block,
+        label: block.label.slice(0, LABEL_MAX),
+        pageId: block.pageId.slice(0, 50),
+        icon: clampIcon(block.icon),
+        variant: block.variant === 'primary' ? 'primary' : 'secondary',
+      };
   }
+}
+
+export function getPageIds(doc: SnapDoc): string[] {
+  return doc.pages.map((p) => p.id);
 }

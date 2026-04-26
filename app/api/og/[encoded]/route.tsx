@@ -20,11 +20,15 @@ export async function GET(
     const direct = decodeSnap(encoded);
     if (direct) {
       title = direct.title;
-      blockCount = direct.blocks.length;
+      // Get block count from first page (or requested page if ?page= is present)
+      const pageParam = new URL(req.url).searchParams.get('page');
+      const pageToShow = pageParam ? direct.pages.find((p) => p.id === pageParam) : direct.pages[0];
+      blockCount = pageToShow?.blocks.length ?? 0;
       accent = themeHex(direct.theme);
     } else if (encoded.length <= 20 && /^[A-Za-z0-9_-]+$/.test(encoded)) {
       const url = new URL(req.url);
-      const snapUrl = `${url.protocol}//${url.host}/api/snap/${encoded}`;
+      const pageParam = url.searchParams.get('page');
+      const snapUrl = `${url.protocol}//${url.host}/api/snap/${encoded}${pageParam ? `?page=${encodeURIComponent(pageParam)}` : ''}`;
       const r = await fetch(snapUrl, {
         headers: { Accept: 'application/vnd.farcaster.snap+json' },
       });

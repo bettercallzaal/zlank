@@ -16,10 +16,15 @@ const FALLBACK_DOC: SnapDoc = {
   version: 1,
   title: 'Snap not found',
   theme: 'gray',
-  blocks: [
-    { type: 'header', title: 'Snap not found', subtitle: 'Invalid or expired link' },
-    { type: 'text', content: 'Build your own at zlank.online' },
-    { type: 'link', label: 'Open Zlank', url: 'https://zlank.online' },
+  pages: [
+    {
+      id: 'home',
+      blocks: [
+        { type: 'header', title: 'Snap not found', subtitle: 'Invalid or expired link' },
+        { type: 'text', content: 'Build your own at zlank.online' },
+        { type: 'link', label: 'Open Zlank', url: 'https://zlank.online' },
+      ],
+    },
   ],
 };
 
@@ -42,8 +47,8 @@ const CORS_HEADERS = {
   'Access-Control-Expose-Headers': 'Link, Vary, Content-Type',
 };
 
-function snapJsonResponse(doc: SnapDoc, origin: string, encoded: string): NextResponse {
-  const snap = docToSnap(doc, `${origin}/api/snap/${encoded}`);
+function snapJsonResponse(doc: SnapDoc, origin: string, encoded: string, pageId?: string): NextResponse {
+  const snap = docToSnap(doc, `${origin}/api/snap/${encoded}`, pageId);
   const linkHeader =
     `</api/snap/${encoded}>; rel="alternate"; type="${SNAP_MEDIA_TYPE}", ` +
     `</api/snap/${encoded}>; rel="alternate"; type="text/html"`;
@@ -126,11 +131,12 @@ export async function GET(
   const encoded = await getEncoded(ctx);
   const doc = (await resolveSnap(encoded)) ?? FALLBACK_DOC;
   const origin = getOrigin(req);
+  const pageId = new URL(req.url).searchParams.get('page') ?? undefined;
 
   // Content negotiation: Snap-aware clients ask for the snap media type.
   const accept = req.headers.get('accept') ?? '';
   if (accept.includes(SNAP_MEDIA_TYPE) || accept.includes('vnd.farcaster.snap')) {
-    return snapJsonResponse(doc, origin, encoded);
+    return snapJsonResponse(doc, origin, encoded, pageId);
   }
 
   return htmlResponse(doc, origin, encoded);
@@ -143,7 +149,8 @@ export async function POST(
   const encoded = await getEncoded(ctx);
   const doc = (await resolveSnap(encoded)) ?? FALLBACK_DOC;
   const origin = getOrigin(req);
-  return snapJsonResponse(doc, origin, encoded);
+  const pageId = new URL(req.url).searchParams.get('page') ?? undefined;
+  return snapJsonResponse(doc, origin, encoded, pageId);
 }
 
 function escapeHtml(s: string): string {

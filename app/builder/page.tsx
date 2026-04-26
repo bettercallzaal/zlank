@@ -13,11 +13,14 @@ import {
   type IconName,
 } from '@/lib/blocks';
 import { encodeSnap } from '@/lib/encode';
+import { saveMySnap } from '@/lib/my-snaps';
+import { getTemplateById } from '@/lib/templates';
 
 const BLOCK_OPTIONS: { type: BlockType; label: string; icon: string }[] = [
   { type: 'header', label: 'Header', icon: 'H' },
   { type: 'text', label: 'Text', icon: 'T' },
   { type: 'link', label: 'Link', icon: 'L' },
+  { type: 'navigate', label: 'Navigate', icon: 'N' },
   { type: 'share', label: 'Share', icon: 'S' },
   { type: 'image', label: 'Image', icon: 'I' },
   { type: 'music', label: 'Music', icon: 'M' },
@@ -28,7 +31,7 @@ const BLOCK_OPTIONS: { type: BlockType; label: string; icon: string }[] = [
   { type: 'divider', label: 'Divider', icon: '-' },
 ];
 
-function newBlock(type: BlockType): Block {
+function newBlock(type: BlockType, availablePageIds: string[] = []): Block {
   switch (type) {
     case 'header':
       return { type: 'header', title: 'New header', subtitle: '' };
@@ -40,6 +43,14 @@ function newBlock(type: BlockType): Block {
         label: 'Open link',
         url: 'https://farcaster.xyz',
         icon: 'external-link',
+        variant: 'primary',
+      };
+    case 'navigate':
+      return {
+        type: 'navigate',
+        label: 'Go to page',
+        pageId: availablePageIds[1] || 'page-2',
+        icon: 'chevron-right',
         variant: 'primary',
       };
     case 'share':
@@ -83,6 +94,9 @@ export default function Builder() {
   const [doc, setDoc] = useState<SnapDoc>(DEFAULT_SNAP);
   const [deployed, setDeployed] = useState<string | null>(null);
   const [isMiniApp, setIsMiniApp] = useState(false);
+  const [currentPageId, setCurrentPageId] = useState<string>('home');
+  const [pageCounter, setPageCounter] = useState(2);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -93,34 +107,109 @@ export default function Builder() {
       } catch {
         // Browser context, no-op
       }
+
+      // Load from query params (id= for editing existing, template= for template)
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const snapId = params.get('id');
+        const templateId = params.get('template');
+
+        if (snapId) {
+          // Load existing snap for editing
+          try {
+            const res = await fetch(`/api/snaps/${snapId}/doc`);
+            if (res.ok) {
+              const loaded = (await res.json()) as SnapDoc;
+              setDoc(loaded);
+              setEditingId(snapId);
+            }
+          } catch {
+            // silently fail, stay with default
+          }
+        } else if (templateId) {
+          // Load template
+          const template = getTemplateById(templateId);
+          if (template) {
+            setDoc(template.doc);
+          }
+        }
+      }
     })();
   }, []);
 
   function updateBlock(idx: number, patch: Partial<Block>) {
     setDoc((d) => {
-      const next = [...d.blocks];
-      next[idx] = clampBlock({ ...next[idx], ...patch } as Block);
-      return { ...d, blocks: next };
+      const pageIdx = d.pages.findIndex((p) => p.id === currentPageId);
+      if (pageIdx === -1) return d;
+      const newPages = [...d.pages];
+      const nextBlocks = [...newPages[pageIdx].blocks];
+      nextBlocks[idx] = clampBlock({ ...nextBlocks[idx], ...patch } as Block);
+      newPages[pageIdx] = { ...newPages[pageIdx], blocks: nextBlocks };
+      return { ...d, pages: newPages };
     });
   }
 
   function removeBlock(idx: number) {
-    setDoc((d) => ({ ...d, blocks: d.blocks.filter((_, i) => i !== idx) }));
+    setDoc((d) => {
+      const pageIdx = d.pages.findIndex((p) => p.id === currentPageId);
+      if (pageIdx === -1) return d;
+      const newPages = [...d.pages];
+      newPages[pageIdx] = {
+        ...newPages[pageIdx],
+        blocks: newPages[pageIdx].blocks.filter((_, i) => i !== idx),
+      };
+      return { ...d, pages: newPages };
+    });
   }
 
   function addBlock(type: BlockType) {
-    setDoc((d) => ({ ...d, blocks: [...d.blocks, newBlock(type)] }));
+    setDoc((d) => {
+      const pageIdx = d.pages.findIndex((p) => p.id === currentPageId);
+      if (pageIdx === -1) return d;
+      const newPages = [...d.pages];
+      const otherPageIds = d.pages.filter((p) => p.id !== currentPageId).map((p) => p.id);
+      newPages[pageIdx] = {
+        ...newPages[pageIdx],
+        blocks: [...newPages[pageIdx].blocks, newBlock(type, otherPageIds)],
+      };
+      return { ...d, pages: newPages };
+    });
   }
 
   function moveBlock(idx: number, dir: -1 | 1) {
     setDoc((d) => {
-      const next = [...d.blocks];
+      const pageIdx = d.pages.findIndex((p) => p.id === currentPageId);
+      if (pageIdx === -1) return d;
+      const newPages = [...d.pages];
+      const nextBlocks = [...newPages[pageIdx].blocks];
       const target = idx + dir;
-      if (target < 0 || target >= next.length) return d;
-      [next[idx], next[target]] = [next[target], next[idx]];
-      return { ...d, blocks: next };
+      if (target < 0 || target >= nextBlocks.length) return d;
+      [nextBlocks[idx], nextBlocks[target]] = [nextBlocks[target], nextBlocks[idx]];
+      newPages[pageIdx] = { ...newPages[pageIdx], blocks: nextBlocks };
+      return { ...d, pages: newPages };
     });
   }
+
+  function addPage() {
+    const newPageId = `page-${pageCounter}`;
+    setPageCounter((c) => c + 1);
+    setDoc((d) => ({
+      ...d,
+      pages: [...d.pages, { id: newPageId, blocks: [] }],
+    }));
+    setCurrentPageId(newPageId);
+  }
+
+  function deletePage(pageId: string) {
+    if (doc.pages.length === 1) return;
+    const newPages = doc.pages.filter((p) => p.id !== pageId);
+    setDoc((d) => ({ ...d, pages: newPages }));
+    if (currentPageId === pageId) {
+      setCurrentPageId(newPages[0].id);
+    }
+  }
+
+  const currentPage = doc.pages.find((p) => p.id === currentPageId);
 
   const [deploying, setDeploying] = useState(false);
   const [deployErr, setDeployErr] = useState<string | null>(null);
@@ -140,6 +229,17 @@ export default function Builder() {
       }
       const data = (await res.json()) as { id: string; short: boolean };
       setDeployed(data.id);
+
+      // Save to localStorage for My Snaps history
+      const totalBlockCount = doc.pages.reduce((sum, page) => sum + page.blocks.length, 0);
+      saveMySnap({
+        id: data.id,
+        title: doc.title,
+        theme: doc.theme,
+        blockCount: totalBlockCount,
+        createdAt: editingId ? Date.now() : Date.now(),
+        updatedAt: Date.now(),
+      });
     } catch (err: unknown) {
       // Fall back to URL-encode locally if API call fails
       try {
@@ -181,9 +281,19 @@ export default function Builder() {
   return (
     <main className="min-h-screen flex flex-col">
       <header className="border-b border-[#1f3252] px-4 py-3 flex items-center justify-between">
-        <Link href="/" className="text-[#f5a623] font-bold text-lg">
-          Zlank
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link href="/" className="text-[#f5a623] font-bold text-lg">
+            Zlank
+          </Link>
+          <nav className="hidden sm:flex gap-3 text-sm">
+            <Link href="/templates" className="text-[#8aa0bd] hover:text-[#f5a623] transition">
+              Templates
+            </Link>
+            <Link href="/dashboard" className="text-[#8aa0bd] hover:text-[#f5a623] transition">
+              My Snaps
+            </Link>
+          </nav>
+        </div>
         <div className="flex items-center gap-3">
           {!deployed ? (
             <button
@@ -248,16 +358,53 @@ export default function Builder() {
           </label>
 
           <div className="border-t border-[#1f3252] pt-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs text-[#8aa0bd] uppercase tracking-wide">Pages</h3>
+              <button
+                onClick={addPage}
+                className="text-xs text-[#f5a623] hover:underline"
+              >
+                + add page
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {doc.pages.map((page) => (
+                <div key={page.id} className="flex items-center gap-1">
+                  <button
+                    onClick={() => setCurrentPageId(page.id)}
+                    className={`px-3 py-1 text-xs rounded transition ${
+                      currentPageId === page.id
+                        ? 'bg-[#f5a623] text-[#0a1628]'
+                        : 'bg-[#122440] border border-[#1f3252] text-[#e8eef7] hover:border-[#f5a623]'
+                    }`}
+                  >
+                    {page.id}
+                  </button>
+                  {doc.pages.length > 1 && (
+                    <button
+                      onClick={() => deletePage(page.id)}
+                      className="px-1 text-xs text-red-400 hover:bg-red-900 rounded"
+                    >
+                      x
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t border-[#1f3252] pt-3 space-y-2">
             <h3 className="text-xs text-[#8aa0bd] uppercase tracking-wide">Blocks</h3>
-            {doc.blocks.map((block, idx) => (
+            {currentPage?.blocks.map((block, idx) => (
               <BlockEditor
                 key={idx}
                 block={block}
                 idx={idx}
-                total={doc.blocks.length}
+                total={currentPage.blocks.length}
                 onChange={(patch) => updateBlock(idx, patch)}
                 onRemove={() => removeBlock(idx)}
                 onMove={(dir) => moveBlock(idx, dir)}
+                allPageIds={doc.pages.map((p) => p.id)}
               />
             ))}
           </div>
@@ -280,12 +427,12 @@ export default function Builder() {
         </section>
 
         <section className="p-4 overflow-y-auto">
-          <h3 className="text-xs text-[#8aa0bd] uppercase tracking-wide mb-3">Live preview</h3>
+          <h3 className="text-xs text-[#8aa0bd] uppercase tracking-wide mb-3">Live preview - {currentPageId}</h3>
           <div className="bg-[#122440] border border-[#1f3252] rounded-lg p-4 space-y-3">
-            {doc.blocks.map((b, i) => (
-              <BlockPreview key={i} block={b} theme={doc.theme} />
+            {currentPage?.blocks.map((b, i) => (
+              <BlockPreview key={i} block={b} theme={doc.theme} allPageIds={doc.pages.map((p) => p.id)} />
             ))}
-            {doc.blocks.length === 0 && (
+            {!currentPage?.blocks || currentPage.blocks.length === 0 && (
               <p className="text-[#8aa0bd] text-center py-8">No blocks yet. Add one from the left.</p>
             )}
           </div>
@@ -317,6 +464,7 @@ function BlockEditor({
   onChange,
   onRemove,
   onMove,
+  allPageIds = [],
 }: {
   block: Block;
   idx: number;
@@ -324,6 +472,7 @@ function BlockEditor({
   onChange: (patch: Partial<Block>) => void;
   onRemove: () => void;
   onMove: (dir: -1 | 1) => void;
+  allPageIds?: string[];
 }) {
   return (
     <div className="bg-[#122440] border border-[#1f3252] rounded p-3 space-y-2">
@@ -520,6 +669,49 @@ function BlockEditor({
         <ToggleEditor block={block} onChange={onChange} />
       )}
 
+      {block.type === 'navigate' && (
+        <>
+          <input
+            value={block.label}
+            onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)}
+            placeholder="Button label"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <select
+            value={block.pageId}
+            onChange={(e) => onChange({ pageId: e.target.value } as Partial<Block>)}
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          >
+            {allPageIds
+              .filter((pid) => pid !== 'home') // Can't navigate to current page from this simple impl
+              .map((pid) => (
+                <option key={pid} value={pid}>
+                  {pid}
+                </option>
+              ))}
+          </select>
+          <div className="flex gap-2">
+            <select
+              value={block.icon ?? 'chevron-right'}
+              onChange={(e) => onChange({ icon: e.target.value as IconName } as Partial<Block>)}
+              className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            >
+              {ICONS.map((i) => (
+                <option key={i} value={i}>{i}</option>
+              ))}
+            </select>
+            <select
+              value={block.variant ?? 'primary'}
+              onChange={(e) => onChange({ variant: e.target.value as 'primary' | 'secondary' } as Partial<Block>)}
+              className="bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            >
+              <option value="primary">primary</option>
+              <option value="secondary">secondary</option>
+            </select>
+          </div>
+        </>
+      )}
+
       {block.type === 'divider' && <p className="text-xs text-[#8aa0bd]">Visual separator. No fields.</p>}
     </div>
   );
@@ -703,7 +895,7 @@ function PollEditor({
   );
 }
 
-function BlockPreview({ block, theme }: { block: Block; theme: SnapDoc['theme'] }) {
+function BlockPreview({ block, theme, allPageIds = [] }: { block: Block; theme: SnapDoc['theme']; allPageIds?: string[] }) {
   const accent = `var(--color-zao${theme === 'purple' ? 'purple' : theme === 'amber' ? 'gold' : 'gold'})`;
 
   if (block.type === 'header') {
@@ -722,6 +914,13 @@ function BlockPreview({ block, theme }: { block: Block; theme: SnapDoc['theme'] 
       <a className="block bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 text-center font-medium hover:border-[#f5a623] transition" style={{ color: accent }}>
         {block.label}
       </a>
+    );
+  }
+  if (block.type === 'navigate') {
+    return (
+      <div className="block bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 text-center font-medium" style={{ color: accent }}>
+        {block.label}
+      </div>
     );
   }
   if (block.type === 'share') {

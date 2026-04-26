@@ -162,16 +162,38 @@ function blockToElements(
       ids.push(id);
       break;
     }
+    case 'navigate': {
+      const props: Record<string, unknown> = { label: block.label };
+      if (block.variant) props.variant = block.variant;
+      if (block.icon) props.icon = block.icon;
+      else props.icon = 'chevron-right';
+      elements[id] = {
+        type: 'button',
+        props,
+        on: { press: { action: 'submit', params: { target: `${baseUrl}?page=${encodeURIComponent(block.pageId)}` } } },
+      };
+      ids.push(id);
+      break;
+    }
   }
 
   return { ids, elements };
 }
 
-export function docToSnap(doc: SnapDoc, baseUrl: string) {
+export function docToSnap(doc: SnapDoc, baseUrl: string, pageId?: string) {
+  // Default to first page if not specified
+  const targetPage = pageId || doc.pages[0]?.id;
+  const page = doc.pages.find((p) => p.id === targetPage);
+
+  if (!page) {
+    // Fallback: render first page if requested page not found
+    return docToSnap(doc, baseUrl, doc.pages[0]?.id);
+  }
+
   const allElements: Record<string, Element> = {};
   const childIds: string[] = [];
 
-  doc.blocks.forEach((block, idx) => {
+  page.blocks.forEach((block, idx) => {
     const { ids, elements } = blockToElements(block, idx, baseUrl);
     Object.assign(allElements, elements);
     childIds.push(...ids);

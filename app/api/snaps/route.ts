@@ -15,7 +15,7 @@ interface CreateBody {
 function isSnapDoc(input: unknown): input is SnapDoc {
   if (!input || typeof input !== 'object') return false;
   const d = input as Partial<SnapDoc>;
-  return d.version === 1 && Array.isArray(d.blocks) && typeof d.title === 'string';
+  return d.version === 1 && Array.isArray(d.pages) && typeof d.title === 'string';
 }
 
 export async function POST(req: NextRequest) {
