@@ -31,6 +31,7 @@ const BLOCK_OPTIONS: { type: BlockType; label: string; icon: string }[] = [
   { type: 'progress', label: 'Progress', icon: '%' },
   { type: 'slider', label: 'Slider', icon: '~' },
   { type: 'switch', label: 'Switch', icon: 'O' },
+  { type: 'feedback', label: 'Feedback', icon: '@' },
   { type: 'divider', label: 'Divider', icon: '-' },
 ];
 
@@ -96,6 +97,14 @@ function newBlock(type: BlockType, availablePageIds: string[] = []): Block {
       return { type: 'slider', label: 'Rate it', min: 0, max: 10, defaultValue: 7 };
     case 'switch':
       return { type: 'switch', label: 'Subscribe to updates', defaultChecked: false };
+    case 'feedback':
+      return {
+        type: 'feedback',
+        label: 'Send feedback',
+        prompt: 'What should we add?',
+        mention: 'zaal',
+        prefix: 'feedback for zlank:',
+      };
   }
 }
 
