@@ -877,7 +877,134 @@ function BlockEditor({
         </>
       )}
       {block.type === 'divider' && <p className="text-xs text-[#8aa0bd]">Visual separator. No fields.</p>}
+
+      <GateEditor block={block} onChange={onChange} />
     </div>
+  );
+}
+
+const GATE_PRESETS: { id: string; symbol: string; address: string; decimals: number }[] = [
+  { id: 'zabal', symbol: 'ZABAL', address: '0xbB48f19B0494Ff7C1fE5Dc2032aeEE14312f0b07', decimals: 18 },
+];
+
+function GateEditor({ block, onChange }: { block: Block; onChange: (patch: Partial<Block>) => void }) {
+  const gate = block.gate;
+  const presetMatch = gate
+    ? GATE_PRESETS.find((p) => p.address.toLowerCase() === gate.token.toLowerCase())
+    : null;
+  const mode: 'none' | 'preset' | 'custom' = !gate ? 'none' : presetMatch ? 'preset' : 'custom';
+
+  function clearGate() {
+    onChange({ gate: undefined } as Partial<Block>);
+  }
+  function applyPreset(preset: typeof GATE_PRESETS[number]) {
+    onChange({
+      gate: {
+        type: 'token-balance',
+        token: preset.address,
+        symbol: preset.symbol,
+        minBalance: gate?.minBalance || '1',
+        decimals: preset.decimals,
+        upsellUrl: gate?.upsellUrl,
+      },
+    } as Partial<Block>);
+  }
+  function setCustom() {
+    onChange({
+      gate: {
+        type: 'token-balance',
+        token: gate?.token || '',
+        symbol: gate?.symbol || '',
+        minBalance: gate?.minBalance || '1',
+        decimals: gate?.decimals ?? 18,
+        upsellUrl: gate?.upsellUrl,
+      },
+    } as Partial<Block>);
+  }
+  function patchGate(patch: Partial<NonNullable<Block['gate']>>) {
+    if (!gate) return;
+    onChange({ gate: { ...gate, ...patch } } as Partial<Block>);
+  }
+
+  return (
+    <details className="border border-[#1f3252] rounded">
+      <summary className="cursor-pointer px-2 py-1 text-xs text-[#8aa0bd] hover:text-[#f5a623]">
+        Gate {gate ? `(holders only - ${gate.symbol || 'token'} >= ${gate.minBalance})` : '(public)'}
+      </summary>
+      <div className="p-2 space-y-2 text-xs">
+        <div className="flex gap-2">
+          <button
+            onClick={clearGate}
+            className={`px-2 py-1 rounded ${mode === 'none' ? 'bg-[#f5a623] text-[#0a1628]' : 'bg-[#0a1628] border border-[#1f3252]'}`}
+          >
+            Public
+          </button>
+          {GATE_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => applyPreset(p)}
+              className={`px-2 py-1 rounded ${mode === 'preset' && presetMatch?.id === p.id ? 'bg-[#f5a623] text-[#0a1628]' : 'bg-[#0a1628] border border-[#1f3252]'}`}
+            >
+              {p.symbol}
+            </button>
+          ))}
+          <button
+            onClick={setCustom}
+            className={`px-2 py-1 rounded ${mode === 'custom' ? 'bg-[#f5a623] text-[#0a1628]' : 'bg-[#0a1628] border border-[#1f3252]'}`}
+          >
+            Custom
+          </button>
+        </div>
+
+        {gate && (
+          <div className="space-y-1">
+            {mode === 'custom' && (
+              <>
+                <input
+                  value={gate.token}
+                  onChange={(e) => patchGate({ token: e.target.value.trim() })}
+                  placeholder="Token contract address (0x...)"
+                  className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1"
+                />
+                <div className="flex gap-2">
+                  <input
+                    value={gate.symbol ?? ''}
+                    onChange={(e) => patchGate({ symbol: e.target.value })}
+                    placeholder="Symbol (e.g. MYTOKEN)"
+                    className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1"
+                  />
+                  <input
+                    type="number"
+                    value={gate.decimals ?? 18}
+                    onChange={(e) => patchGate({ decimals: Number(e.target.value) || 18 })}
+                    placeholder="decimals"
+                    className="w-20 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1"
+                  />
+                </div>
+              </>
+            )}
+            <div className="flex gap-2">
+              <span className="self-center text-[#8aa0bd]">Min balance:</span>
+              <input
+                value={gate.minBalance}
+                onChange={(e) => patchGate({ minBalance: e.target.value.trim() })}
+                placeholder="1"
+                className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1"
+              />
+            </div>
+            <input
+              value={gate.upsellUrl ?? ''}
+              onChange={(e) => patchGate({ upsellUrl: e.target.value })}
+              placeholder="Upsell URL (optional, e.g. swap link)"
+              className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1"
+            />
+            <p className="text-[#5e7290] text-[11px]">
+              Non-holders see {gate.upsellUrl ? 'a button opening the upsell URL' : 'a "holders only" message'}.
+            </p>
+          </div>
+        )}
+      </div>
+    </details>
   );
 }
 
