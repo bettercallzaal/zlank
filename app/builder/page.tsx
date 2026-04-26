@@ -404,6 +404,43 @@ export default function Builder() {
             Confetti effect on render
           </label>
 
+          <details className="border border-[#1f3252] rounded">
+            <summary className="cursor-pointer px-2 py-1 text-xs text-[#8aa0bd] hover:text-[#f5a623]">
+              Coin {doc.coin?.caip19 ? `(buy $${doc.coin.symbol || 'token'} button auto-injected)` : '(none)'}
+            </summary>
+            <div className="p-2 space-y-2 text-xs">
+              <input
+                value={doc.coin?.caip19 ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value.trim();
+                  setDoc((d) => ({
+                    ...d,
+                    coin: v ? { ...(d.coin ?? {}), caip19: v } : undefined,
+                  }));
+                }}
+                placeholder="CAIP-19 (e.g. eip155:8453/erc20:0x...)"
+                className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1"
+              />
+              <input
+                value={doc.coin?.symbol ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value.trim();
+                  setDoc((d) => ({
+                    ...d,
+                    coin: d.coin ? { ...d.coin, symbol: v } : undefined,
+                  }));
+                }}
+                placeholder="Symbol (e.g. ZBL)"
+                className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1"
+                disabled={!doc.coin?.caip19}
+              />
+              <p className="text-[11px] text-[#5e7290]">
+                When set, every page auto-prepends a "Buy ${doc.coin?.symbol || 'token'}" button using the Snap{' '}
+                <code>swap_token</code> action. Launch a coin via Zora/Clanker/Empire Builder, then paste the CAIP-19 here.
+              </p>
+            </div>
+          </details>
+
           <div className="border-t border-[#1f3252] pt-3 space-y-2">
             <div className="flex items-center justify-between">
               <h3 className="text-xs text-[#8aa0bd] uppercase tracking-wide">Pages</h3>

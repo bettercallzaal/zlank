@@ -417,6 +417,26 @@ export function docToSnap(
   const allElements: Record<string, Element> = {};
   const childIds: string[] = [];
 
+  // Auto-inject coin swap button at top of every page when doc.coin is set.
+  if (doc.coin?.caip19) {
+    const symbol = doc.coin.symbol?.trim() || 'token';
+    const buyId = '_zlank_coin_buy';
+    const sepId = '_zlank_coin_sep';
+    allElements[buyId] = {
+      type: 'button',
+      props: {
+        label: `Buy $${symbol.slice(0, 24)}`,
+        variant: 'primary',
+        icon: 'coins',
+      },
+      on: {
+        press: { action: 'swap_token', params: { buyToken: doc.coin.caip19 } },
+      },
+    };
+    allElements[sepId] = { type: 'separator', props: {} };
+    childIds.push(buyId, sepId);
+  }
+
   page.blocks.forEach((block, idx) => {
     if (block.gate) {
       const result = opts.gateResults?.get(idx);

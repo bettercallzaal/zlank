@@ -71,6 +71,7 @@ function migrateLoadedDoc(raw: unknown): SnapDoc | null {
       theme: (d.theme as SnapDoc['theme']) ?? 'purple',
       pages: [{ id: 'home', blocks: d.blocks as SnapDoc['pages'][number]['blocks'] }],
       confetti: d.confetti as boolean | undefined,
+      coin: d.coin as SnapDoc['coin'],
     };
   }
 
@@ -82,10 +83,32 @@ function migrateLoadedDoc(raw: unknown): SnapDoc | null {
       theme: (d.theme as SnapDoc['theme']) ?? 'purple',
       pages: d.pages as SnapDoc['pages'],
       confetti: d.confetti as boolean | undefined,
+      coin: d.coin as SnapDoc['coin'],
     };
   }
 
   return null;
+}
+
+export async function setSnapCoin(
+  id: string,
+  coin: { caip19: string; symbol?: string } | null,
+): Promise<boolean> {
+  const c = await getClient();
+  if (!c) return false;
+  for (const prefix of [KEY_PREFIX, SNAPDOC_PREFIX]) {
+    const raw = await c.get(prefix + id);
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      if (coin) parsed.coin = coin;
+      else delete parsed.coin;
+      await c.set(prefix + id, JSON.stringify(parsed));
+    } catch {
+      // skip malformed
+    }
+  }
+  return true;
 }
 
 export async function loadSnap(id: string): Promise<SnapDoc | null> {

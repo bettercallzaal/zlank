@@ -222,6 +222,17 @@ export interface SnapPage {
   blocks: Block[];
 }
 
+/**
+ * Optional creator-coin association. When set, every page auto-prepends a
+ * swap_token button at the top so the snap doubles as a coin-buy surface.
+ */
+export interface SnapCoin {
+  /** CAIP-19 token identifier, e.g. eip155:8453/erc20:0x... */
+  caip19: string;
+  /** Display symbol, used for the button label. */
+  symbol?: string;
+}
+
 export interface SnapDoc {
   version: 1;
   title: string;
@@ -229,6 +240,8 @@ export interface SnapDoc {
   pages: SnapPage[];
   /** Snap-level effects applied on render. Currently spec supports 'confetti'. */
   confetti?: boolean;
+  /** Optional coin auto-injects a swap_token button on every page. */
+  coin?: SnapCoin;
 }
 
 export const DEFAULT_SNAP: SnapDoc = {
