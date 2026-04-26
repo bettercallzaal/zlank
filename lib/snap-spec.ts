@@ -332,6 +332,37 @@ function blockToElements(
       ids.push(promptId, inputId, btnId);
       break;
     }
+    case 'chatbot': {
+      const titleId = `${id}_title`;
+      const promptId = `${id}_prompt`;
+      const inputId = `${id}_input`;
+      const btnId = `${id}_btn`;
+      elements[titleId] = {
+        type: 'item',
+        props: { title: block.title, description: block.prompt },
+      };
+      elements[promptId] = {
+        type: 'text',
+        props: { content: 'Logged for the builder. Reply comes back inline.', size: 'sm' },
+      };
+      elements[inputId] = {
+        type: 'input',
+        props: {
+          name: `chat_${idx}`,
+          type: 'text',
+          label: block.label,
+          placeholder: block.placeholder ?? 'What are you trying to build?',
+          maxLength: 240,
+        },
+      };
+      elements[btnId] = {
+        type: 'button',
+        props: { label: block.label || 'Send', variant: 'primary', icon: 'message-circle' },
+        on: { press: { action: 'submit', params: { target: baseUrl } } },
+      };
+      ids.push(titleId, promptId, inputId, btnId);
+      break;
+    }
   }
 
   return { ids, elements };
