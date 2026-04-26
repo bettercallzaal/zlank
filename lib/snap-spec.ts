@@ -28,18 +28,21 @@ function blockToElements(
         };
         childIds.push(badgeId);
       }
+      const itemProps: Record<string, unknown> = { title: block.title };
+      if (block.subtitle) itemProps.description = block.subtitle;
       elements[itemId] = {
         type: 'item',
-        props: { title: block.title, description: block.subtitle ?? '' },
+        props: itemProps,
         ...(childIds.length ? { children: childIds } : {}),
       };
       ids.push(itemId);
       break;
     }
     case 'text': {
+      const content = block.content?.trim() || ' ';
       elements[id] = {
         type: 'text',
-        props: { content: block.content, size: 'md' },
+        props: { content, size: 'md' },
       };
       ids.push(id);
       break;
@@ -47,8 +50,7 @@ function blockToElements(
     case 'link': {
       const props: Record<string, unknown> = { label: block.label };
       if (block.variant) props.variant = block.variant;
-      if (block.icon) props.icon = block.icon;
-      else props.icon = 'external-link';
+      props.icon = block.icon ?? 'external-link';
       elements[id] = {
         type: 'button',
         props,
@@ -115,33 +117,31 @@ function blockToElements(
       break;
     }
     case 'poll': {
+      // Single-select toggle_group — user taps one option, then Submit fires the vote.
+      // POST handler reads inputs[`vote_${idx}`] = chosen option label.
       const qId = `${id}_q`;
-      const inputId = `${id}_input`;
+      const groupId = `${id}_group`;
       const btnId = `${id}_btn`;
       elements[qId] = {
         type: 'text',
         props: { content: block.question, size: 'md', weight: 'bold' },
       };
-      elements[inputId] = {
-        type: 'input',
+      elements[groupId] = {
+        type: 'toggle_group',
         props: {
           name: `vote_${idx}`,
-          type: 'text',
-          label: 'Your vote',
-          placeholder: block.options.join(' / '),
+          options: block.options,
+          orientation: block.options.length > 3 ? 'vertical' : 'horizontal',
         },
       };
       elements[btnId] = {
         type: 'button',
         props: { label: 'Submit vote', variant: 'primary', icon: 'check' },
         on: {
-          press: {
-            action: 'submit',
-            params: { target: baseUrl },
-          },
+          press: { action: 'submit', params: { target: baseUrl } },
         },
       };
-      ids.push(qId, inputId, btnId);
+      ids.push(qId, groupId, btnId);
       break;
     }
     case 'chart': {
@@ -153,49 +153,66 @@ function blockToElements(
       };
       elements[chartId] = {
         type: 'bar_chart',
-        props: {
-          bars: block.bars,
-        },
+        props: { bars: block.bars },
       };
       ids.push(titleId, chartId);
       break;
     }
     case 'toggle': {
-      elements[id] = {
+      // Multi-select toggle_group + Submit. POST reads inputs[`toggle_${idx}`] = selected[].
+      const groupId = `${id}_group`;
+      const btnId = `${id}_btn`;
+      elements[groupId] = {
         type: 'toggle_group',
         props: {
           name: `toggle_${idx}`,
           label: block.label,
           options: block.options,
           orientation: block.orientation ?? 'horizontal',
+          multiple: true,
         },
       };
-      ids.push(id);
+      elements[btnId] = {
+        type: 'button',
+        props: { label: 'Save selection', variant: 'primary', icon: 'check' },
+        on: {
+          press: { action: 'submit', params: { target: baseUrl } },
+        },
+      };
+      ids.push(groupId, btnId);
       break;
     }
     case 'navigate': {
       const props: Record<string, unknown> = { label: block.label };
       if (block.variant) props.variant = block.variant;
-      if (block.icon) props.icon = block.icon;
-      else props.icon = 'chevron-right';
+      props.icon = block.icon ?? 'chevron-right';
       elements[id] = {
         type: 'button',
         props,
-        on: { press: { action: 'submit', params: { target: `${baseUrl}?page=${encodeURIComponent(block.pageId)}` } } },
+        on: {
+          press: {
+            action: 'submit',
+            params: { target: `${baseUrl}?page=${encodeURIComponent(block.pageId)}` },
+          },
+        },
       };
       ids.push(id);
       break;
     }
     case 'progress': {
-      elements[id] = {
-        type: 'progress',
-        props: { value: block.value, max: block.max, label: block.label },
+      const propsObj: Record<string, unknown> = {
+        value: block.value,
+        max: block.max,
       };
+      if (block.label) propsObj.label = block.label;
+      elements[id] = { type: 'progress', props: propsObj };
       ids.push(id);
       break;
     }
     case 'slider': {
-      elements[id] = {
+      const sliderId = `${id}_slider`;
+      const btnId = `${id}_btn`;
+      elements[sliderId] = {
         type: 'slider',
         props: {
           name: `slider_${idx}`,
@@ -203,13 +220,23 @@ function blockToElements(
           min: block.min,
           max: block.max,
           defaultValue: block.defaultValue,
+          showValue: true,
         },
       };
-      ids.push(id);
+      elements[btnId] = {
+        type: 'button',
+        props: { label: 'Save', variant: 'primary', icon: 'check' },
+        on: {
+          press: { action: 'submit', params: { target: baseUrl } },
+        },
+      };
+      ids.push(sliderId, btnId);
       break;
     }
     case 'switch': {
-      elements[id] = {
+      const switchId = `${id}_switch`;
+      const btnId = `${id}_btn`;
+      elements[switchId] = {
         type: 'switch',
         props: {
           name: `switch_${idx}`,
@@ -217,7 +244,14 @@ function blockToElements(
           defaultChecked: block.defaultChecked,
         },
       };
-      ids.push(id);
+      elements[btnId] = {
+        type: 'button',
+        props: { label: 'Save', variant: 'primary', icon: 'check' },
+        on: {
+          press: { action: 'submit', params: { target: baseUrl } },
+        },
+      };
+      ids.push(switchId, btnId);
       break;
     }
   }
@@ -226,12 +260,10 @@ function blockToElements(
 }
 
 export function docToSnap(doc: SnapDoc, baseUrl: string, pageId?: string) {
-  // Default to first page if not specified
   const targetPage = pageId || doc.pages[0]?.id;
   const page = doc.pages.find((p) => p.id === targetPage);
 
   if (!page) {
-    // Fallback: render first page if requested page not found
     return docToSnap(doc, baseUrl, doc.pages[0]?.id);
   }
 
@@ -244,8 +276,7 @@ export function docToSnap(doc: SnapDoc, baseUrl: string, pageId?: string) {
     childIds.push(...ids);
   });
 
-  // Auto-append "Built with Zlank" footer to every Snap (viral attribution).
-  // Skipped on the promo Snap itself (handled separately in /api/snap/zlank).
+  // Auto-append "zlank.online" footer to every Snap (viral attribution).
   const homepageOrigin = (() => {
     try {
       return new URL(baseUrl).origin;
