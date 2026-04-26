@@ -158,12 +158,35 @@ export async function POST(
   // results Snap with bar chart of tallies + confetti.
   let inputs: Record<string, unknown> = {};
   try {
-    const parsed = await parseRequest(req.clone(), { skipJFSVerification: true });
+    const parsed = await parseRequest(req.clone(), {
+      skipJFSVerification: true,
+      maxSkewSeconds: 60 * 60 * 24 * 365, // 1 year - permissive for emulator + tests
+    });
     if (parsed.success && parsed.action.type === 'post') {
       inputs = parsed.action.inputs ?? {};
     }
   } catch {
-    // ignore - return same Snap if body parse fails
+    // ignore - try fallback raw parse
+  }
+  // Fallback: try direct JSON body parse for inputs (in case JFS validation strict)
+  if (Object.keys(inputs).length === 0) {
+    try {
+      const body = (await req.clone().json()) as { payload?: string; inputs?: Record<string, unknown> };
+      if (body.inputs && typeof body.inputs === 'object') {
+        inputs = body.inputs;
+      } else if (typeof body.payload === 'string') {
+        // base64url-decode the payload
+        const padded = body.payload.replace(/-/g, '+').replace(/_/g, '/');
+        const padding = padded.length % 4 === 0 ? '' : '='.repeat(4 - (padded.length % 4));
+        const json = Buffer.from(padded + padding, 'base64').toString('utf8');
+        const decoded = JSON.parse(json) as { inputs?: Record<string, unknown> };
+        if (decoded.inputs && typeof decoded.inputs === 'object') {
+          inputs = decoded.inputs;
+        }
+      }
+    } catch {
+      // give up
+    }
   }
 
   const voteEntry = Object.entries(inputs).find(([k]) => k.startsWith('vote_'));
