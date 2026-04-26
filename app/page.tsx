@@ -8,12 +8,26 @@ export default function Home() {
         No-code builder for Farcaster Snaps. Stack blocks. Hit Deploy. Share to feed.
       </p>
 
-      <Link
-        href="/builder"
-        className="inline-block bg-[#f5a623] text-[#0a1628] font-bold px-8 py-4 rounded-lg hover:bg-[#ffc14d] transition"
-      >
-        Build a Snap
-      </Link>
+      <div className="flex gap-4">
+        <Link
+          href="/builder"
+          className="inline-block bg-[#f5a623] text-[#0a1628] font-bold px-8 py-4 rounded-lg hover:bg-[#ffc14d] transition"
+        >
+          Build a Snap
+        </Link>
+        <Link
+          href="/templates"
+          className="inline-block border border-[#f5a623] text-[#f5a623] font-bold px-8 py-4 rounded-lg hover:bg-[#f5a623] hover:text-[#0a1628] transition"
+        >
+          Browse Templates
+        </Link>
+        <Link
+          href="/dashboard"
+          className="inline-block border border-[#8aa0bd] text-[#8aa0bd] font-bold px-8 py-4 rounded-lg hover:border-[#f5a623] hover:text-[#f5a623] transition"
+        >
+          My Snaps
+        </Link>
+      </div>
 
       <section className="mt-16 grid gap-4">
         <h2 className="text-2xl font-bold">Why Zlank</h2>

@@ -36,6 +36,7 @@ export function isKvAvailable(): boolean {
 }
 
 const KEY_PREFIX = 'snap:';
+const SNAPDOC_PREFIX = 'snapdoc:';
 const SHORT_ID_LEN = 6;
 
 export async function saveSnap(doc: SnapDoc): Promise<string> {
@@ -47,10 +48,13 @@ export async function saveSnap(doc: SnapDoc): Promise<string> {
     const exists = await c.exists(key);
     if (exists) continue;
     await c.set(key, JSON.stringify(doc));
+    // Also store the original SnapDoc for editing
+    await c.set(SNAPDOC_PREFIX + id, JSON.stringify(doc));
     return id;
   }
   const id = nanoid(SHORT_ID_LEN + 4);
   await c.set(KEY_PREFIX + id, JSON.stringify(doc));
+  await c.set(SNAPDOC_PREFIX + id, JSON.stringify(doc));
   return id;
 }
 
@@ -58,6 +62,18 @@ export async function loadSnap(id: string): Promise<SnapDoc | null> {
   const c = await getClient();
   if (!c) return null;
   const raw = await c.get(KEY_PREFIX + id);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as SnapDoc;
+  } catch {
+    return null;
+  }
+}
+
+export async function loadSnapDoc(id: string): Promise<SnapDoc | null> {
+  const c = await getClient();
+  if (!c) return null;
+  const raw = await c.get(SNAPDOC_PREFIX + id);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as SnapDoc;
