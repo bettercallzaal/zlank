@@ -503,10 +503,21 @@ export function docToSnap(
   };
   childIds.push('_zlank_sep', '_zlank_footer');
 
+  // Snap v2 limit: root has 7 direct children max, each nested stack 6 max,
+  // up to 4 levels deep. We hit this when interactive blocks expand into 4+
+  // sub-elements each. Auto-group into balanced sub-stacks so any number of
+  // blocks (within the 64 total) renders.
+  const ROOT_MAX = 7;
+  const NEST_MAX = 6;
+  const rootChildren = chunkIntoStacks(childIds, allElements, {
+    rootMax: ROOT_MAX,
+    nestMax: NEST_MAX,
+  });
+
   allElements['page'] = {
     type: 'stack',
     props: { direction: 'vertical', gap: 'md' },
-    children: childIds,
+    children: rootChildren,
   };
 
   const out: Record<string, unknown> = {
@@ -523,4 +534,44 @@ export function docToSnap(
   }
 
   return out;
+}
+
+/**
+ * Group child element IDs into nested stacks so the root has at most rootMax
+ * direct children. Snap v2 catalog limits: root 7, nested 6, max depth 4.
+ * Adds the new sub-stack elements directly to `elements` (in-place) and
+ * returns the new root children list.
+ */
+function chunkIntoStacks(
+  ids: string[],
+  elements: Record<string, Element>,
+  caps: { rootMax: number; nestMax: number },
+  depth = 0,
+  prefix = '_zlank_grp',
+): string[] {
+  if (ids.length <= caps.rootMax) return ids;
+  if (depth >= 3) {
+    // Hit nesting cap; return as-is and let the validator surface it.
+    return ids;
+  }
+  // Aim for roughly equal chunks that respect nestMax.
+  const chunkSize = Math.min(
+    caps.nestMax,
+    Math.ceil(ids.length / caps.rootMax),
+  );
+  const groups: string[][] = [];
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    groups.push(ids.slice(i, i + chunkSize));
+  }
+  const groupIds: string[] = groups.map((group, gIdx) => {
+    const groupId = `${prefix}_${depth}_${gIdx}`;
+    elements[groupId] = {
+      type: 'stack',
+      props: { direction: 'vertical', gap: 'md' },
+      children: group,
+    };
+    return groupId;
+  });
+  // If grouping still exceeds rootMax, recurse one level deeper.
+  return chunkIntoStacks(groupIds, elements, caps, depth + 1, `${prefix}_n`);
 }
