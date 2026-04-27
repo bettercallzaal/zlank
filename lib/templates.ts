@@ -355,7 +355,7 @@ export const TEMPLATES: TemplateMeta[] = [
             { type: 'divider' },
             {
               type: 'text',
-              content: 'Read the log: zlank.online/api/chat-log/{snap-id}',
+              content: 'Every entry logs to your dashboard for follow-up.',
             },
           ],
         },
