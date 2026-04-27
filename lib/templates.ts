@@ -11,7 +11,7 @@ export const TEMPLATES: TemplateMeta[] = [
   {
     id: 'fan-vote',
     name: 'Fan Vote',
-    description: 'Header, poll, and share button for quick voting',
+    description: 'Header, poll, and share button. Replace the question and options with your own.',
     doc: {
       version: 1,
       title: 'Fan Vote',
@@ -22,18 +22,18 @@ export const TEMPLATES: TemplateMeta[] = [
           blocks: [
             {
               type: 'header',
-              title: 'What should we do next?',
-              subtitle: 'Cast your vote below',
+              title: 'What should we ship next?',
+              subtitle: 'Pick one. Live tally after you vote.',
             },
             {
               type: 'poll',
-              question: 'Pick your favorite option',
-              options: ['Option A', 'Option B', 'Option C'],
+              question: 'Vote your pick',
+              options: ['New track', 'New merch', 'New tour date'],
             },
             {
               type: 'share',
-              label: 'Share vote',
-              text: 'Just voted on this poll',
+              label: 'Share with friends',
+              text: 'Help me decide what to ship next',
               icon: 'share',
             },
           ],
@@ -55,25 +55,25 @@ export const TEMPLATES: TemplateMeta[] = [
           blocks: [
             {
               type: 'header',
-              title: 'New Track Released',
-              subtitle: 'Available now on all platforms',
+              title: 'New track is out',
+              subtitle: 'Tap Listen to open in your player',
             },
             {
               type: 'music',
-              url: 'https://open.spotify.com/track/',
-              label: 'Listen on Spotify',
+              url: 'https://open.spotify.com/album/4LH4d3cOWNNsVw41Gqt2kv',
+              label: 'Listen now',
               icon: 'play',
             },
             {
               type: 'artist',
               fid: 19640,
-              displayName: 'Artist Name',
-              label: 'View Artist',
+              displayName: 'Replace with your FC handle',
+              label: 'View artist profile',
             },
             {
               type: 'share',
-              label: 'Share Track',
-              text: 'Just dropped a new track',
+              label: 'Share the drop',
+              text: 'New track out now',
               icon: 'share',
             },
           ],
@@ -95,12 +95,12 @@ export const TEMPLATES: TemplateMeta[] = [
           blocks: [
             {
               type: 'header',
-              title: 'Support Our Mission',
-              subtitle: 'Help us reach our goal',
+              title: 'Support our mission',
+              subtitle: 'Top supporters this round',
             },
             {
               type: 'chart',
-              title: 'Top Supporters',
+              title: 'Top supporters',
               bars: [
                 { label: 'Alice', value: 50 },
                 { label: 'Bob', value: 30 },
@@ -109,15 +109,15 @@ export const TEMPLATES: TemplateMeta[] = [
             },
             {
               type: 'link',
-              label: 'Contribute Now',
-              url: 'https://example.com/donate',
+              label: 'Contribute',
+              url: 'https://www.thezao.com',
               icon: 'gift',
               variant: 'primary',
             },
             {
               type: 'share',
-              label: 'Share',
-              text: 'Supporting this cause',
+              label: 'Share campaign',
+              text: 'Help us hit our goal',
               icon: 'share',
             },
           ],
@@ -139,24 +139,24 @@ export const TEMPLATES: TemplateMeta[] = [
           blocks: [
             {
               type: 'header',
-              title: 'You are Invited',
-              subtitle: 'Join us for an unforgettable evening',
+              title: 'You are invited',
+              subtitle: 'Join us for the night',
             },
             {
               type: 'text',
-              content: 'Date: Saturday, May 15\nTime: 7:00 PM - 11:00 PM\nLocation: Main Event Space',
+              content: 'Date: Sat May 15\nTime: 7-11 PM\nLocation: TBA - check the link',
             },
             {
               type: 'link',
-              label: 'RSVP Now',
-              url: 'https://example.com/rsvp',
+              label: 'RSVP on Lu.ma',
+              url: 'https://lu.ma',
               icon: 'external-link',
               variant: 'primary',
             },
             {
               type: 'share',
-              label: 'Share Event',
-              text: 'Going to this event',
+              label: 'Bring a friend',
+              text: 'Going to this',
               icon: 'share',
             },
           ],
@@ -178,26 +178,26 @@ export const TEMPLATES: TemplateMeta[] = [
           blocks: [
             {
               type: 'header',
-              title: 'This Week Top 7',
-              subtitle: 'The hottest performers this week',
+              title: 'Top 7 this week',
+              subtitle: 'Replace the names + values with your own',
             },
             {
               type: 'chart',
-              title: 'Weekly Leaderboard',
+              title: 'Weekly leaderboard',
               bars: [
-                { label: 'Artist 1', value: 95 },
-                { label: 'Artist 2', value: 87 },
-                { label: 'Artist 3', value: 76 },
-                { label: 'Artist 4', value: 65 },
-                { label: 'Artist 5', value: 54 },
-                { label: 'Artist 6', value: 43 },
-                { label: 'Artist 7', value: 32 },
+                { label: 'Alice', value: 95 },
+                { label: 'Bob', value: 87 },
+                { label: 'Carol', value: 76 },
+                { label: 'Dave', value: 65 },
+                { label: 'Eve', value: 54 },
+                { label: 'Frank', value: 43 },
+                { label: 'Grace', value: 32 },
               ],
             },
             {
               type: 'share',
-              label: 'Share Leaderboard',
-              text: 'Check out this week top performers',
+              label: 'Share leaderboard',
+              text: 'This weeks top 7',
               icon: 'share',
             },
           ],
@@ -220,19 +220,23 @@ export const TEMPLATES: TemplateMeta[] = [
           blocks: [
             {
               type: 'header',
-              title: 'Two Truths and a Lie',
+              title: 'Two truths and a lie',
               subtitle: 'Guess which one is false',
             },
             {
               type: 'toggle',
-              label: 'Pick one statement',
-              options: ['Statement 1', 'Statement 2', 'Statement 3'],
+              label: 'Tap the lie',
+              options: [
+                'I have met every ZAO member',
+                'I built a Snap in 90 seconds',
+                'I once shipped 5 PRs in one day',
+              ],
               orientation: 'vertical',
             },
             {
               type: 'share',
-              label: 'Share Game',
-              text: 'Playing two truths and a lie',
+              label: 'Challenge a friend',
+              text: 'Two truths and a lie - guess the lie',
               icon: 'share',
             },
           ],
@@ -254,38 +258,38 @@ export const TEMPLATES: TemplateMeta[] = [
           blocks: [
             {
               type: 'header',
-              title: 'Welcome Aboard',
-              subtitle: 'Glad to have you on the team',
+              title: 'Welcome aboard',
+              subtitle: 'Three quick links to get you started',
             },
             {
               type: 'text',
-              content: 'Here are some helpful resources to get you started:',
+              content: 'Replace these links with your own onboarding resources.',
             },
             {
               type: 'link',
-              label: 'Read the Handbook',
-              url: 'https://example.com/handbook',
+              label: 'Read the handbook',
+              url: 'https://www.thezao.com',
               icon: 'external-link',
               variant: 'primary',
             },
             {
               type: 'link',
-              label: 'Join Discord',
-              url: 'https://discord.gg/example',
-              icon: 'external-link',
+              label: 'Join the chat',
+              url: 'https://farcaster.xyz/~/channel/thezao',
+              icon: 'message-circle',
               variant: 'primary',
             },
             {
               type: 'link',
-              label: 'View Roadmap',
-              url: 'https://example.com/roadmap',
+              label: 'See the roadmap',
+              url: 'https://github.com/bettercallzaal/zlank',
               icon: 'external-link',
-              variant: 'primary',
+              variant: 'secondary',
             },
             {
               type: 'share',
-              label: 'Share Welcome',
-              text: 'Just joined this amazing community',
+              label: 'Bring a friend',
+              text: 'Just joined - come hang',
               icon: 'share',
             },
           ],
@@ -296,10 +300,10 @@ export const TEMPLATES: TemplateMeta[] = [
   {
     id: 'quick-poll',
     name: 'Quick Poll',
-    description: 'Simple header and poll combo',
+    description: 'Smallest possible Snap - one question, two options.',
     doc: {
       version: 1,
-      title: 'Quick Poll',
+      title: 'Quick poll',
       theme: 'red',
       pages: [
         {
@@ -307,12 +311,12 @@ export const TEMPLATES: TemplateMeta[] = [
           blocks: [
             {
               type: 'header',
-              title: 'Quick Poll',
-              subtitle: 'What is your preference?',
+              title: 'Quick check',
+              subtitle: 'Yes or no - takes one tap',
             },
             {
               type: 'poll',
-              question: 'Choose one',
+              question: 'Should we ship it?',
               options: ['Yes', 'No'],
             },
           ],
