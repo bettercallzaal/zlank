@@ -13,10 +13,25 @@ export const runtime = 'nodejs';
 // Allowed chain IDs: Ethereum mainnet, Base, Optimism, Polygon, Arbitrum, Zora.
 const CAIP19_RE = /^eip155:(1|8453|10|137|42161|7777777)\/erc20:0x[a-fA-F0-9]{40}$/;
 
+// AUTH: requires Authorization: Bearer <ZLANK_ADMIN_SECRET>. The builder UI
+// sets snap.coin at save time inside the SnapDoc itself, so this endpoint is
+// admin-only for now (use case: rotate/clear post-deploy without re-saving).
+// When per-FID owner auth lands, this gate flips to per-snap-owner check.
+function isAuthed(req: NextRequest): boolean {
+  const expected = process.env.ZLANK_ADMIN_SECRET;
+  if (!expected) return false;
+  const header = req.headers.get('authorization') ?? '';
+  const m = /^Bearer\s+(\S+)$/.exec(header);
+  return !!m && m[1] === expected;
+}
+
 export async function POST(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ) {
+  if (!isAuthed(req)) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
   const { id } = await ctx.params;
   let body: { caip19?: string; symbol?: string; clear?: boolean };
   try {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
 import { nanoid } from 'nanoid';
+import { rateLimit, rateLimitResponse, ipOf } from '@/lib/rate-limit';
 
 export const runtime = 'nodejs';
 
@@ -11,7 +12,17 @@ export const runtime = 'nodejs';
 const MAX_BYTES = 4 * 1024 * 1024; // 4 MiB
 const ALLOWED = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
+const UPLOAD_BURST_MAX = Number(process.env.ZLANK_UPLOAD_BURST_MAX ?? 10);
+const UPLOAD_HOUR_MAX = Number(process.env.ZLANK_UPLOAD_HOUR_MAX ?? 60);
+
 export async function POST(req: NextRequest) {
+  const ip = ipOf(req);
+  const rl = await rateLimit([
+    { key: `upload:burst:${ip}`, windowSec: 60, max: UPLOAD_BURST_MAX },
+    { key: `upload:hour:${ip}`, windowSec: 60 * 60, max: UPLOAD_HOUR_MAX },
+  ]);
+  if (!rl.ok) return rateLimitResponse(rl);
+
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
     return NextResponse.json(
       { error: 'Image upload disabled - BLOB_READ_WRITE_TOKEN not set on server.' },

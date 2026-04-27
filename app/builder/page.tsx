@@ -164,17 +164,33 @@ export default function Builder() {
         const templateId = params.get('template');
 
         if (snapId) {
-          // Load existing snap for editing
+          // Load existing snap for editing. Then check for an in-progress
+          // edit draft (autosave key zlank:draft:edit:{id}); if it's newer
+          // than the server doc and the user wants it back, prefer the draft.
+          // For now, load draft silently if present - the autosave window is
+          // 600ms so anything in localStorage is by definition "newest".
+          setEditingId(snapId);
+          let serverDoc: SnapDoc | null = null;
           try {
             const res = await fetch(`/api/snaps/${snapId}/doc`);
-            if (res.ok) {
-              const loaded = (await res.json()) as SnapDoc;
-              setDoc(loaded);
-              setEditingId(snapId);
+            if (res.ok) serverDoc = (await res.json()) as SnapDoc;
+          } catch {
+            // ignore - we'll try draft below
+          }
+          let restored = false;
+          try {
+            const raw = window.localStorage.getItem(`zlank:draft:edit:${snapId}`);
+            if (raw) {
+              const parsed = JSON.parse(raw) as { doc?: SnapDoc; savedAt?: number };
+              if (parsed.doc?.version === 1) {
+                setDoc(parsed.doc);
+                restored = true;
+              }
             }
           } catch {
-            // silently fail, stay with default
+            // corrupt draft - fall through to server
           }
+          if (!restored && serverDoc) setDoc(serverDoc);
         } else if (templateId) {
           // Load template
           const template = getTemplateById(templateId);
@@ -631,12 +647,13 @@ export default function Builder() {
 
           <div className="border-t border-[#1f3252] pt-3 space-y-2">
             <h3 className="text-xs text-[#8aa0bd] uppercase tracking-wide">Add block</h3>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {BLOCK_OPTIONS.map((opt) => (
                 <button
                   key={opt.type}
                   onClick={() => addBlock(opt.type)}
-                  className="bg-[#122440] border border-[#1f3252] rounded px-2 py-3 text-xs hover:border-[#f5a623] transition"
+                  aria-label={`Add ${opt.label} block`}
+                  className="bg-[#122440] border border-[#1f3252] rounded px-3 py-3 text-xs hover:border-[#f5a623] transition min-h-[56px]"
                 >
                   <div className="font-bold text-[#f5a623]">{opt.icon}</div>
                   <div className="mt-1">{opt.label}</div>
@@ -739,7 +756,14 @@ function BlockEditor({
       )}
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs text-[#f5a623] uppercase flex items-center gap-1">
-          <span className="cursor-grab text-[#5e7290]" title="Drag to reorder">::</span>
+          <span
+            className="cursor-grab text-[#5e7290]"
+            aria-label="Drag handle - press up or dn buttons on touch devices"
+            title="Drag to reorder (use up/dn buttons on mobile)"
+            role="img"
+          >
+            ::
+          </span>
           {block.type}
         </span>
         <div className="flex gap-1 text-xs">

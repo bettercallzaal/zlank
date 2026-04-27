@@ -288,6 +288,17 @@ export async function POST(
     }
   }
 
+  // FCs are positive integers >= 1. Reject 0, negatives, non-integers - any
+  // of those means upstream lied. Drop to undefined so dedupe + gate eval
+  // treat the request as anonymous instead of attributing to a fake FID.
+  if (
+    typeof fid !== 'number' ||
+    !Number.isInteger(fid) ||
+    fid < 1
+  ) {
+    fid = undefined;
+  }
+
   const voteEntry = Object.entries(inputs).find(([k]) => k.startsWith('vote_'));
   if (voteEntry) {
     const [voteKey, voteValue] = voteEntry;
@@ -315,7 +326,7 @@ export async function POST(
   if (chatEntry) {
     const [chatKey, chatValue] = chatEntry;
     const blockIdx = Number(chatKey.replace('chat_', ''));
-    const text = String(chatValue ?? '').trim();
+    const text = String(chatValue ?? '').trim().slice(0, 240);
     if (text) {
       const targetPage = doc.pages.find((p) => p.id === (pageId || doc.pages[0]?.id));
       const block = targetPage?.blocks[blockIdx];
@@ -352,7 +363,7 @@ export async function POST(
   if (feedbackEntry) {
     const [fbKey, fbValue] = feedbackEntry;
     const blockIdx = Number(fbKey.replace('feedback_', ''));
-    const text = String(fbValue ?? '').trim();
+    const text = String(fbValue ?? '').trim().slice(0, 240);
     if (text) {
       const targetPage = doc.pages.find((p) => p.id === (pageId || doc.pages[0]?.id));
       const block = targetPage?.blocks[blockIdx];

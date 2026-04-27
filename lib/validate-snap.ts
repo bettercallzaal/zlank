@@ -17,7 +17,7 @@ function lintBlock(block: Block, idx: number, pageBlocks: Block[]): string[] {
       break;
     case 'link':
       if (!block.label?.trim()) issues.push(`${here}: link label is empty`);
-      if (!/^https?:\/\//.test(block.url)) issues.push(`${here}: link url must start with https://`);
+      if (!/^https:\/\//.test(block.url)) issues.push(`${here}: link url must start with https://`);
       break;
     case 'share':
       if (!block.label?.trim()) issues.push(`${here}: share label is empty`);
@@ -25,10 +25,13 @@ function lintBlock(block: Block, idx: number, pageBlocks: Block[]): string[] {
       break;
     case 'image':
       if (!block.url?.trim()) issues.push(`${here}: image url is empty`);
+      else if (!/^https:\/\//.test(block.url)) {
+        issues.push(`${here}: image url must start with https:// (got ${block.url.slice(0, 20)}...)`);
+      }
       break;
     case 'music':
       if (!block.url?.trim()) issues.push(`${here}: music url is empty`);
-      if (!/^https?:\/\//.test(block.url)) issues.push(`${here}: music url must start with https://`);
+      else if (!/^https:\/\//.test(block.url)) issues.push(`${here}: music url must start with https://`);
       break;
     case 'artist':
       if (!Number.isFinite(block.fid) || block.fid <= 0) {
@@ -122,6 +125,16 @@ export function validateDoc(doc: SnapDoc, baseUrl = 'https://zlank.online/api/sn
   const pages: ValidatePageResult[] = [];
   const errors: string[] = [];
 
+  // Doc-level lint: page IDs are required + unique; navigate targets must
+  // resolve to a real page on this doc.
+  const seenPageIds = new Set<string>();
+  const knownPageIds = new Set(doc.pages.map((p) => p.id));
+  for (const page of doc.pages) {
+    if (!page.id?.trim()) errors.push(`page id is empty`);
+    else if (seenPageIds.has(page.id)) errors.push(`page id "${page.id}" is duplicated`);
+    seenPageIds.add(page.id);
+  }
+
   for (const page of doc.pages) {
     const issues: string[] = [];
 
@@ -129,6 +142,11 @@ export function validateDoc(doc: SnapDoc, baseUrl = 'https://zlank.online/api/sn
     // snap-spec.ts handles them at render time).
     page.blocks.forEach((block, idx) => {
       issues.push(...lintBlock(block, idx, page.blocks));
+      if (block.type === 'navigate' && block.pageId && !knownPageIds.has(block.pageId)) {
+        issues.push(
+          `block ${idx} (navigate): pageId "${block.pageId}" does not exist (known: ${[...knownPageIds].join(', ')})`,
+        );
+      }
     });
 
     let snap: unknown;
