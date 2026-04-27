@@ -85,7 +85,38 @@ export default function DashboardPage() {
   );
 }
 
+interface SnapStats {
+  views: number;
+  interactions: number;
+  lastViewAt: number | null;
+}
+
 function SnapCard({ snap, onDelete }: { snap: MySnapEntry; onDelete: () => void }) {
+  const [stats, setStats] = useState<SnapStats | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/snaps/${snap.id}/stats`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => {
+        if (cancelled || !s) return;
+        setStats({ views: s.views ?? 0, interactions: s.interactions ?? 0, lastViewAt: s.lastViewAt ?? null });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [snap.id]);
+
+  function copyShareUrl() {
+    const url = `${window.location.origin}/api/snap/${snap.id}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
+
   return (
     <div className="bg-[#122440] border border-[#1f3252] rounded-lg p-6 flex items-center justify-between hover:border-[#f5a623] transition">
       <div className="flex items-center gap-4 flex-1">
@@ -97,11 +128,26 @@ function SnapCard({ snap, onDelete }: { snap: MySnapEntry; onDelete: () => void 
           <h3 className="text-lg font-bold text-[#e8eef7] truncate">{snap.title}</h3>
           <p className="text-sm text-[#8aa0bd]">
             {snap.blockCount} block{snap.blockCount !== 1 ? 's' : ''} - {formatRelativeTime(snap.updatedAt)}
+            {stats && (
+              <>
+                {' '}- <span className="text-[#f5a623]">{stats.views.toLocaleString()}</span> view{stats.views !== 1 ? 's' : ''}
+                {stats.interactions > 0 && (
+                  <> - <span className="text-[#f5a623]">{stats.interactions.toLocaleString()}</span> interaction{stats.interactions !== 1 ? 's' : ''}</>
+                )}
+              </>
+            )}
           </p>
         </div>
       </div>
 
       <div className="flex items-center gap-2 flex-shrink-0">
+        <button
+          onClick={copyShareUrl}
+          className="px-3 py-2 text-sm bg-[#1f3252] text-[#e8eef7] rounded hover:bg-[#2a3f52] transition"
+          title="Copy snap URL"
+        >
+          {copied ? 'Copied' : 'Share'}
+        </button>
         <a
           href={`/api/snap/${snap.id}`}
           target="_blank"
