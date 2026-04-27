@@ -303,10 +303,26 @@ export default function Builder() {
 
   const [deploying, setDeploying] = useState(false);
   const [deployErr, setDeployErr] = useState<string | null>(null);
+  const [validationIssues, setValidationIssues] = useState<string[]>([]);
+
+  function duplicateBlock(idx: number) {
+    setDoc((d) => {
+      const pageIdx = d.pages.findIndex((p) => p.id === currentPageId);
+      if (pageIdx === -1) return d;
+      const blocks = d.pages[pageIdx].blocks;
+      if (idx < 0 || idx >= blocks.length) return d;
+      const cloned: Block = JSON.parse(JSON.stringify(blocks[idx])) as Block;
+      const next = [...blocks.slice(0, idx + 1), cloned, ...blocks.slice(idx + 1)];
+      const newPages = [...d.pages];
+      newPages[pageIdx] = { ...newPages[pageIdx], blocks: next };
+      return { ...d, pages: newPages };
+    });
+  }
 
   async function deploy() {
     setDeploying(true);
     setDeployErr(null);
+    setValidationIssues([]);
     try {
       const res = await fetch('/api/snaps', {
         method: 'POST',
@@ -321,6 +337,7 @@ export default function Builder() {
         // Validation errors (400 w/ issues): surface them, do NOT silently
         // fall back to URL-encode - that would hide an invalid Snap.
         if (res.status === 400 && Array.isArray(data.issues) && data.issues.length > 0) {
+          setValidationIssues(data.issues);
           setDeployErr(`Snap won't render. Fix:\n- ${data.issues.join('\n- ')}`);
           return;
         }
@@ -377,6 +394,35 @@ export default function Builder() {
     await navigator.clipboard.writeText(url);
   }
 
+  // Cmd+S / Ctrl+S to deploy. Captured on the page (not on inputs) so the
+  // browser's "save page" dialog never wins.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const isSave = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's';
+      if (!isSave) return;
+      e.preventDefault();
+      if (!deploying) deploy();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deploying, doc, currentPageId, editingId]);
+
+  // Map "block N (type): message" issues to per-block index for highlighting.
+  const blockErrorMap: Map<number, string[]> = (() => {
+    const m = new Map<number, string[]>();
+    const re = /(?:page \S+: )?block (\d+)\b/;
+    for (const issue of validationIssues) {
+      const match = issue.match(re);
+      if (!match) continue;
+      const idx = Number(match[1]);
+      const list = m.get(idx) ?? [];
+      list.push(issue.replace(/^.*?block \d+ \([^)]+\): /, ''));
+      m.set(idx, list);
+    }
+    return m;
+  })();
+
   return (
     <main className="min-h-screen flex flex-col">
       <header className="border-b border-[#1f3252] px-4 py-3 flex items-center justify-between">
@@ -398,8 +444,12 @@ export default function Builder() {
             <button
               onClick={deploy}
               disabled={deploying}
-              className="bg-[#f5a623] text-[#0a1628] font-bold px-5 py-2 rounded-md hover:bg-[#ffc14d] transition disabled:opacity-60"
+              title="Cmd+S / Ctrl+S"
+              className="bg-[#f5a623] text-[#0a1628] font-bold px-5 py-2 rounded-md hover:bg-[#ffc14d] transition disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
             >
+              {deploying && (
+                <span className="inline-block w-3 h-3 border-2 border-[#0a1628] border-t-transparent rounded-full animate-spin" aria-hidden />
+              )}
               {deploying ? 'Deploying...' : 'Deploy'}
             </button>
           ) : (
@@ -541,6 +591,8 @@ export default function Builder() {
                 onRemove={() => removeBlock(idx)}
                 onMove={(dir) => moveBlock(idx, dir)}
                 onReorder={reorderBlock}
+                onDuplicate={() => duplicateBlock(idx)}
+                errors={blockErrorMap.get(idx)}
                 allPageIds={doc.pages.map((p) => p.id)}
               />
             ))}
@@ -607,6 +659,8 @@ function BlockEditor({
   onRemove,
   onMove,
   onReorder,
+  onDuplicate,
+  errors,
   allPageIds = [],
 }: {
   block: Block;
@@ -616,9 +670,17 @@ function BlockEditor({
   onRemove: () => void;
   onMove: (dir: -1 | 1) => void;
   onReorder?: (from: number, to: number) => void;
+  onDuplicate?: () => void;
+  errors?: string[];
   allPageIds?: string[];
 }) {
   const [dragOver, setDragOver] = useState(false);
+  const hasError = errors && errors.length > 0;
+  const borderClass = hasError
+    ? 'border-red-500'
+    : dragOver
+      ? 'border-[#f5a623]'
+      : 'border-[#1f3252]';
   return (
     <div
       draggable={!!onReorder}
@@ -640,8 +702,15 @@ function BlockEditor({
         const from = Number(e.dataTransfer.getData('text/plain'));
         if (Number.isFinite(from) && from !== idx) onReorder(from, idx);
       }}
-      className={`bg-[#122440] border rounded p-3 space-y-2 ${dragOver ? 'border-[#f5a623]' : 'border-[#1f3252]'}`}
+      className={`bg-[#122440] border rounded p-3 space-y-2 ${borderClass}`}
     >
+      {hasError && (
+        <div className="bg-red-950 border border-red-700 rounded px-2 py-1 text-xs text-red-300">
+          {errors!.map((e, i) => (
+            <div key={i}>! {e}</div>
+          ))}
+        </div>
+      )}
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs text-[#f5a623] uppercase flex items-center gap-1">
           <span className="cursor-grab text-[#5e7290]" title="Drag to reorder">::</span>
@@ -654,6 +723,11 @@ function BlockEditor({
           <button onClick={() => onMove(1)} disabled={idx === total - 1} className="px-2 py-0.5 hover:bg-[#1f3252] rounded disabled:opacity-30">
             dn
           </button>
+          {onDuplicate && (
+            <button onClick={onDuplicate} className="px-2 py-0.5 hover:bg-[#1f3252] rounded" title="Duplicate block">
+              dup
+            </button>
+          )}
           <button onClick={onRemove} className="px-2 py-0.5 hover:bg-red-900 rounded text-red-400">
             del
           </button>
