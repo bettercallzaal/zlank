@@ -181,6 +181,17 @@ export default function Builder() {
           if (template) {
             setDoc(template.doc);
           }
+        } else {
+          // No id, no template - try to restore an in-progress draft.
+          try {
+            const raw = window.localStorage.getItem('zlank:draft:new');
+            if (raw) {
+              const parsed = JSON.parse(raw) as { doc?: SnapDoc; savedAt?: number };
+              if (parsed.doc?.version === 1) setDoc(parsed.doc);
+            }
+          } catch {
+            // ignore corrupt draft
+          }
         }
       }
     })();
@@ -393,6 +404,21 @@ export default function Builder() {
     const url = `${window.location.origin}/api/snap/${deployed}`;
     await navigator.clipboard.writeText(url);
   }
+
+  // Auto-save draft of in-progress doc to localStorage whenever it changes
+  // (debounced). Restore on next mount unless ?id= or ?template= overrode it.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const t = setTimeout(() => {
+      try {
+        const key = editingId ? `zlank:draft:edit:${editingId}` : 'zlank:draft:new';
+        window.localStorage.setItem(key, JSON.stringify({ doc, savedAt: Date.now() }));
+      } catch {
+        // localStorage full / disabled - ignore
+      }
+    }, 600);
+    return () => clearTimeout(t);
+  }, [doc, editingId]);
 
   // Cmd+S / Ctrl+S to deploy. Captured on the page (not on inputs) so the
   // browser's "save page" dialog never wins.

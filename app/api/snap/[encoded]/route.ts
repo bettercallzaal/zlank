@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { parseRequest } from '@farcaster/snap/server';
 import { resolveSnap } from '@/lib/resolve-snap';
 import { docToSnap } from '@/lib/snap-spec';
-import { recordVote, appendChatLog, bumpStat, getVotes } from '@/lib/kv';
+import { recordVote, appendChatLog, bumpStat, getVotes, claimVote, claimChatTurn } from '@/lib/kv';
 import { evaluateGates, isGateRule, type GateResult } from '@/lib/gates';
 import { chat as llmChat } from '@/lib/llm';
 import type { SnapDoc, Block, ChartBar } from '@/lib/blocks';
@@ -294,9 +294,16 @@ export async function POST(
     const blockIdx = Number(voteKey.replace('vote_', ''));
     const optionRaw = String(voteValue ?? '').trim();
     if (optionRaw) {
-      const tallies = await recordVote(encoded, blockIdx, optionRaw);
+      // One vote per FID per poll. Anonymous votes (no FID) always count.
+      const firstVote = await claimVote(encoded, blockIdx, fid);
+      let tallies: Record<string, number>;
+      if (firstVote) {
+        tallies = await recordVote(encoded, blockIdx, optionRaw);
+      } else {
+        tallies = await getVotes(encoded, blockIdx);
+      }
       return snapJsonResponse(
-        buildResultsDoc(doc, blockIdx, tallies, optionRaw),
+        buildResultsDoc(doc, blockIdx, tallies, optionRaw, !firstVote),
         origin,
         encoded,
         pageId,
@@ -313,6 +320,16 @@ export async function POST(
       const targetPage = doc.pages.find((p) => p.id === (pageId || doc.pages[0]?.id));
       const block = targetPage?.blocks[blockIdx];
       if (block?.type === 'chatbot') {
+        // Per-FID 10s cooldown so a single user can't flood the LLM + log.
+        const allowed = await claimChatTurn(encoded, fid, 10);
+        if (!allowed) {
+          return snapJsonResponse(
+            buildChatCooldownDoc(doc, block),
+            origin,
+            encoded,
+            pageId,
+          );
+        }
         const reply = await llmChat(
           [
             { role: 'system', content: block.systemPrompt },
@@ -368,24 +385,43 @@ export async function POST(
 
 function buildResultsDoc(
   doc: SnapDoc,
-  blockIdx: number,
+  _blockIdx: number,
   tallies: Record<string, number>,
   votedFor: string,
+  alreadyVoted = false,
 ): SnapDoc {
   const bars: ChartBar[] = Object.entries(tallies)
     .sort(([, a], [, b]) => b - a)
     .map(([label, value]) => ({ label, value }));
   const total = bars.reduce((s, b) => s + b.value, 0);
+  const headerTitle = alreadyVoted ? 'Already voted' : 'Vote recorded';
+  const headerSubtitle = alreadyVoted
+    ? `Your earlier pick stands. Live tally below.`
+    : `You picked: ${votedFor}`;
   const newBlocks: Block[] = [
-    { type: 'header', title: 'Vote recorded', subtitle: `You picked: ${votedFor}` },
+    { type: 'header', title: headerTitle, subtitle: headerSubtitle },
     { type: 'chart', title: `Live results (${total} votes)`, bars },
     { type: 'divider' },
-    { type: 'text', content: 'Tap the original cast to vote again or share.' },
+    { type: 'text', content: 'Tap the original cast to share.' },
   ];
   return {
     ...doc,
     pages: [{ id: 'results', blocks: newBlocks }],
-    confetti: true,
+    confetti: !alreadyVoted,
+  };
+}
+
+function buildChatCooldownDoc(
+  doc: SnapDoc,
+  block: { title: string },
+): SnapDoc {
+  const newBlocks: Block[] = [
+    { type: 'header', title: block.title, subtitle: 'Slow down' },
+    { type: 'text', content: 'Sending too fast. Wait a few seconds and try again.' },
+  ];
+  return {
+    ...doc,
+    pages: [{ id: 'chat-cooldown', blocks: newBlocks }],
   };
 }
 

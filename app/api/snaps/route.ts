@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isKvAvailable, saveSnap } from '@/lib/kv';
 import { encodeSnap } from '@/lib/encode';
 import { validateDoc } from '@/lib/validate-snap';
+import { rateLimit, rateLimitResponse, ipOf } from '@/lib/rate-limit';
 import type { SnapDoc } from '@/lib/blocks';
+
+const SNAPS_BURST_MAX = Number(process.env.ZLANK_SNAPS_BURST_MAX ?? 5);
+const SNAPS_HOUR_MAX = Number(process.env.ZLANK_SNAPS_HOUR_MAX ?? 30);
 
 export const runtime = 'nodejs';
 
@@ -20,6 +24,13 @@ function isSnapDoc(input: unknown): input is SnapDoc {
 }
 
 export async function POST(req: NextRequest) {
+  const ip = ipOf(req);
+  const rl = await rateLimit([
+    { key: `snaps:burst:${ip}`, windowSec: 60, max: SNAPS_BURST_MAX },
+    { key: `snaps:hour:${ip}`, windowSec: 60 * 60, max: SNAPS_HOUR_MAX },
+  ]);
+  if (!rl.ok) return rateLimitResponse(rl);
+
   let body: CreateBody;
   try {
     body = (await req.json()) as CreateBody;

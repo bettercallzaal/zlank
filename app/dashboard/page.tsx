@@ -146,8 +146,25 @@ function SnapCard({ snap, onDelete }: { snap: MySnapEntry; onDelete: () => void 
           className="px-3 py-2 text-sm bg-[#1f3252] text-[#e8eef7] rounded hover:bg-[#2a3f52] transition"
           title="Copy snap URL"
         >
-          {copied ? 'Copied' : 'Share'}
+          {copied ? 'Copied' : 'Copy'}
         </button>
+        <a
+          href={(() => {
+            const url = typeof window !== 'undefined'
+              ? `${window.location.origin}/api/snap/${snap.id}`
+              : `https://zlank.online/api/snap/${snap.id}`;
+            const params = new URLSearchParams();
+            params.set('text', snap.title);
+            params.append('embeds[]', url);
+            return `https://farcaster.xyz/~/compose?${params.toString()}`;
+          })()}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="px-3 py-2 text-sm bg-[#1f3252] text-[#f5a623] rounded hover:bg-[#2a3f52] transition"
+          title="Open Farcaster composer"
+        >
+          Cast
+        </a>
         <a
           href={`/api/snap/${snap.id}`}
           target="_blank"
