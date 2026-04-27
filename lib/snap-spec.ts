@@ -317,7 +317,6 @@ function blockToElements(
         props: {
           name: `feedback_${idx}`,
           type: 'text',
-          label: block.label,
           placeholder: 'Type your suggestion...',
           maxLength: 240,
         },
@@ -355,24 +354,21 @@ function blockToElements(
       break;
     }
     case 'chatbot': {
+      // Drop the input label entirely - the title item already provides
+      // context, and re-using block.label as the input label duplicates the
+      // submit button text immediately below ("Send" / "Send").
       const titleId = `${id}_title`;
-      const promptId = `${id}_prompt`;
       const inputId = `${id}_input`;
       const btnId = `${id}_btn`;
       elements[titleId] = {
         type: 'item',
         props: { title: block.title, description: block.prompt },
       };
-      elements[promptId] = {
-        type: 'text',
-        props: { content: 'Logged for the builder. Reply comes back inline.', size: 'sm' },
-      };
       elements[inputId] = {
         type: 'input',
         props: {
           name: `chat_${idx}`,
           type: 'text',
-          label: block.label,
           placeholder: block.placeholder ?? 'What are you trying to build?',
           maxLength: 240,
         },
@@ -382,7 +378,7 @@ function blockToElements(
         props: { label: block.label || 'Send', variant: 'primary', icon: 'message-circle' },
         on: { press: { action: 'submit', params: { target: baseUrl } } },
       };
-      ids.push(titleId, promptId, inputId, btnId);
+      ids.push(titleId, inputId, btnId);
       break;
     }
   }
