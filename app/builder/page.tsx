@@ -37,6 +37,17 @@ const BLOCK_OPTIONS: { type: BlockType; label: string; icon: string }[] = [
   { type: 'divider', label: 'Divider', icon: '-' },
 ];
 
+// Pure helper - move blocks[from] to position `to`, preserving everything else.
+function newPages_reorderHelper<T>(arr: readonly T[], from: number, to: number): T[] {
+  if (from === to || from < 0 || from >= arr.length || to < 0 || to >= arr.length) {
+    return [...arr];
+  }
+  const next = [...arr];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
 function newBlock(type: BlockType, availablePageIds: string[] = []): Block {
   switch (type) {
     case 'header':
@@ -226,6 +237,47 @@ export default function Builder() {
       newPages[pageIdx] = { ...newPages[pageIdx], blocks: nextBlocks };
       return { ...d, pages: newPages };
     });
+  }
+
+  function reorderBlock(from: number, to: number) {
+    setDoc((d) => {
+      const pageIdx = d.pages.findIndex((p) => p.id === currentPageId);
+      if (pageIdx === -1) return d;
+      const blocks = newPages_reorderHelper(d.pages[pageIdx].blocks, from, to);
+      const newPages = [...d.pages];
+      newPages[pageIdx] = { ...newPages[pageIdx], blocks };
+      return { ...d, pages: newPages };
+    });
+  }
+
+  async function importFromSnap(otherSnapId: string) {
+    const id = otherSnapId.trim();
+    if (!id) return;
+    try {
+      const res = await fetch(`/api/snaps/${encodeURIComponent(id)}/doc`);
+      if (!res.ok) {
+        alert(`Snap not found: ${id}`);
+        return;
+      }
+      const other = (await res.json()) as SnapDoc;
+      const importedBlocks = other.pages[0]?.blocks ?? [];
+      if (importedBlocks.length === 0) {
+        alert('That snap has no blocks on page 1.');
+        return;
+      }
+      setDoc((d) => {
+        const pageIdx = d.pages.findIndex((p) => p.id === currentPageId);
+        if (pageIdx === -1) return d;
+        const newPages = [...d.pages];
+        newPages[pageIdx] = {
+          ...newPages[pageIdx],
+          blocks: [...newPages[pageIdx].blocks, ...importedBlocks],
+        };
+        return { ...d, pages: newPages };
+      });
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Import failed');
+    }
   }
 
   function addPage() {
@@ -488,9 +540,15 @@ export default function Builder() {
                 onChange={(patch) => updateBlock(idx, patch)}
                 onRemove={() => removeBlock(idx)}
                 onMove={(dir) => moveBlock(idx, dir)}
+                onReorder={reorderBlock}
                 allPageIds={doc.pages.map((p) => p.id)}
               />
             ))}
+          </div>
+
+          <div className="border-t border-[#1f3252] pt-3 space-y-2">
+            <h3 className="text-xs text-[#8aa0bd] uppercase tracking-wide">Import</h3>
+            <ImportFromSnap onImport={importFromSnap} />
           </div>
 
           <div className="border-t border-[#1f3252] pt-3 space-y-2">
@@ -548,6 +606,7 @@ function BlockEditor({
   onChange,
   onRemove,
   onMove,
+  onReorder,
   allPageIds = [],
 }: {
   block: Block;
@@ -556,12 +615,38 @@ function BlockEditor({
   onChange: (patch: Partial<Block>) => void;
   onRemove: () => void;
   onMove: (dir: -1 | 1) => void;
+  onReorder?: (from: number, to: number) => void;
   allPageIds?: string[];
 }) {
+  const [dragOver, setDragOver] = useState(false);
   return (
-    <div className="bg-[#122440] border border-[#1f3252] rounded p-3 space-y-2">
+    <div
+      draggable={!!onReorder}
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', String(idx));
+        e.dataTransfer.effectAllowed = 'move';
+      }}
+      onDragOver={(e) => {
+        if (!onReorder) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        if (!onReorder) return;
+        e.preventDefault();
+        setDragOver(false);
+        const from = Number(e.dataTransfer.getData('text/plain'));
+        if (Number.isFinite(from) && from !== idx) onReorder(from, idx);
+      }}
+      className={`bg-[#122440] border rounded p-3 space-y-2 ${dragOver ? 'border-[#f5a623]' : 'border-[#1f3252]'}`}
+    >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-[#f5a623] uppercase">{block.type}</span>
+        <span className="text-xs text-[#f5a623] uppercase flex items-center gap-1">
+          <span className="cursor-grab text-[#5e7290]" title="Drag to reorder">::</span>
+          {block.type}
+        </span>
         <div className="flex gap-1 text-xs">
           <button onClick={() => onMove(-1)} disabled={idx === 0} className="px-2 py-0.5 hover:bg-[#1f3252] rounded disabled:opacity-30">
             up
@@ -960,6 +1045,42 @@ function BlockEditor({
       {block.type === 'divider' && <p className="text-xs text-[#8aa0bd]">Visual separator. No fields.</p>}
 
       <GateEditor block={block} onChange={onChange} />
+    </div>
+  );
+}
+
+function ImportFromSnap({ onImport }: { onImport: (id: string) => void | Promise<void> }) {
+  const [val, setVal] = useState('');
+  const [busy, setBusy] = useState(false);
+  async function go() {
+    const id = val.trim().split('/').pop()?.trim();
+    if (!id) return;
+    setBusy(true);
+    try {
+      await onImport(id);
+      setVal('');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="flex gap-2">
+      <input
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') go();
+        }}
+        placeholder="Snap id or URL (e.g. v8-myn)"
+        className="flex-1 bg-[#122440] border border-[#1f3252] rounded px-2 py-1 text-sm"
+      />
+      <button
+        onClick={go}
+        disabled={busy || !val.trim()}
+        className="px-3 py-1 bg-[#f5a623] text-[#0a1628] rounded text-xs font-bold disabled:opacity-40"
+      >
+        {busy ? '...' : 'Import'}
+      </button>
     </div>
   );
 }
