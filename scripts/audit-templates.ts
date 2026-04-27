@@ -15,7 +15,26 @@ const PLACEHOLDER_URL_HOSTS = ['example.com', 'example.org'];
 const GENERIC_LABEL_RE = /^(Option [A-Z0-9]+|Statement \d+|Artist \d+|Choice \d+)$/i;
 const TRUNCATED_URL_RE = /\/(track|playlist|album|user)\/$/;
 
+// Detect unsubstituted template-var residue like "{snap-id}" or "{userFid}".
+const TEMPLATE_VAR_RE = /\{[a-zA-Z][\w-]*\}/;
+
 const UX_RULES: WarnRule[] = [
+  (b) => {
+    // Scan every string-valued field on the block for template-var residue.
+    const fields: string[] = [];
+    if ('content' in b && typeof b.content === 'string') fields.push(b.content);
+    if ('title' in b && typeof b.title === 'string') fields.push(b.title);
+    if ('subtitle' in b && typeof b.subtitle === 'string') fields.push(b.subtitle);
+    if ('label' in b && typeof b.label === 'string') fields.push(b.label);
+    if ('prompt' in b && typeof b.prompt === 'string') fields.push(b.prompt);
+    if ('text' in b && typeof b.text === 'string') fields.push(b.text);
+    if ('placeholder' in b && typeof b.placeholder === 'string') fields.push(b.placeholder);
+    for (const f of fields) {
+      const m = TEMPLATE_VAR_RE.exec(f);
+      if (m) return `unsubstituted template var "${m[0]}" in: ${f.slice(0, 60)}`;
+    }
+    return null;
+  },
   (b) => {
     if ('url' in b && typeof b.url === 'string') {
       try {
