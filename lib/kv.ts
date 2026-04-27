@@ -165,6 +165,42 @@ export async function recordVote(
   return out;
 }
 
+/**
+ * One-vote-per-FID-per-poll dedupe via Redis SETNX. Returns true if this is
+ * the first vote (caller should record + return tally). Returns false if the
+ * FID already voted (caller should return existing tally without bumping).
+ * Anonymous votes (fid undefined) are always permitted.
+ */
+export async function claimVote(
+  snapId: string,
+  blockIdx: number,
+  fid: number | undefined,
+): Promise<boolean> {
+  if (fid === undefined) return true;
+  const c = await getClient();
+  if (!c) return true;
+  const key = `voted:${snapId}:${blockIdx}:${fid}`;
+  const set = await c.set(key, '1', { NX: true, EX: 60 * 60 * 24 * 30 });
+  return set === 'OK';
+}
+
+/**
+ * Cooldown gate per FID per snap for chat / feedback inputs. Returns true if
+ * the call is permitted, false if rate-limited.
+ */
+export async function claimChatTurn(
+  snapId: string,
+  fid: number | undefined,
+  cooldownSec = 10,
+): Promise<boolean> {
+  if (fid === undefined) return true;
+  const c = await getClient();
+  if (!c) return true;
+  const key = `chatturn:${snapId}:${fid}`;
+  const set = await c.set(key, '1', { NX: true, EX: cooldownSec });
+  return set === 'OK';
+}
+
 export async function getVotes(
   snapId: string,
   blockIdx: number,
