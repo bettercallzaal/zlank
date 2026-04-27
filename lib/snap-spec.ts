@@ -510,7 +510,7 @@ export function docToSnap(
   };
 
   const out: Record<string, unknown> = {
-    version: '1.0',
+    version: '2.0',
     theme: { accent: doc.theme },
     ui: {
       root: 'page',

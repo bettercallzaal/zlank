@@ -394,6 +394,96 @@ export const TEMPLATES: TemplateMeta[] = [
       ],
     },
   },
+  {
+    id: 'multi-step-form',
+    name: 'Multi-step Form',
+    description: 'Three-page intake walkthrough modeled on the official snap-catalog example.',
+    doc: {
+      version: 1,
+      title: 'Tell us about your build',
+      theme: 'blue',
+      pages: [
+        {
+          id: 'home',
+          blocks: [
+            {
+              type: 'header',
+              title: 'Step 1 of 3',
+              subtitle: 'What are you working on?',
+              badgeText: '1/3',
+              badgeColor: 'blue',
+            },
+            {
+              type: 'feedback',
+              label: 'Continue',
+              prompt: 'Pitch your idea in one line',
+              mention: 'zaal',
+              prefix: 'multi-step intake:',
+            },
+            {
+              type: 'navigate',
+              label: 'Next: pick a category',
+              pageId: 'category',
+              icon: 'chevron-right',
+              variant: 'primary',
+            },
+          ],
+        },
+        {
+          id: 'category',
+          blocks: [
+            {
+              type: 'header',
+              title: 'Step 2 of 3',
+              subtitle: 'Pick the closest category',
+              badgeText: '2/3',
+              badgeColor: 'blue',
+            },
+            {
+              type: 'poll',
+              question: 'Category',
+              options: ['Music', 'Tooling', 'Community', 'Other'],
+            },
+            {
+              type: 'navigate',
+              label: 'Next: how soon to ship',
+              pageId: 'timeline',
+              icon: 'chevron-right',
+              variant: 'primary',
+            },
+          ],
+        },
+        {
+          id: 'timeline',
+          blocks: [
+            {
+              type: 'header',
+              title: 'Step 3 of 3',
+              subtitle: 'Timeline',
+              badgeText: '3/3',
+              badgeColor: 'blue',
+            },
+            {
+              type: 'slider',
+              label: 'Days to ship',
+              min: 1,
+              max: 30,
+              defaultValue: 7,
+            },
+            {
+              type: 'switch',
+              label: 'Open-source by default',
+              defaultChecked: true,
+            },
+            {
+              type: 'text',
+              content: 'Thanks. Each step logs separately - check the chat log for the full thread.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];
 
 export function getTemplateById(id: string): TemplateMeta | undefined {
