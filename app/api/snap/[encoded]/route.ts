@@ -44,6 +44,25 @@ async function getEncoded(ctx: { params: Promise<{ encoded: string }> }): Promis
   return encoded;
 }
 
+/**
+ * Validate ?page= against the doc's known page IDs. Unknown pages fall through
+ * to the doc's first page so a malformed URL never renders a blank Snap.
+ * Per official examples (element-showcase, snap-catalog) - "view guard" pattern.
+ */
+function resolvePageId(doc: SnapDoc, requested: string | undefined): string | undefined {
+  if (!requested) return undefined;
+  const known = doc.pages.some((p) => p.id === requested);
+  return known ? requested : undefined;
+}
+
+/**
+ * In production we verify the JFS signature on every POST so input + FID are
+ * trustworthy. In dev / preview / emulator we keep the permissive parse so
+ * curl + the snap-emulator continue to work without signing.
+ */
+const VERIFY_JFS_IN_PROD = process.env.NODE_ENV === 'production' &&
+  process.env.ZLANK_VERIFY_JFS !== 'false';
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -190,7 +209,8 @@ export async function GET(
   const encoded = await getEncoded(ctx);
   const doc = (await resolveSnap(encoded)) ?? FALLBACK_DOC;
   const origin = getOrigin(req);
-  const pageId = new URL(req.url).searchParams.get('page') ?? undefined;
+  const requestedPage = new URL(req.url).searchParams.get('page') ?? undefined;
+  const pageId = resolvePageId(doc, requestedPage);
 
   // Content negotiation: Snap-aware clients ask for the snap media type.
   const accept = req.headers.get('accept') ?? '';
@@ -213,15 +233,18 @@ export async function POST(
   const encoded = await getEncoded(ctx);
   const doc = (await resolveSnap(encoded)) ?? FALLBACK_DOC;
   const origin = getOrigin(req);
-  const pageId = new URL(req.url).searchParams.get('page') ?? undefined;
+  const requestedPage = new URL(req.url).searchParams.get('page') ?? undefined;
+  const pageId = resolvePageId(doc, requestedPage);
 
   // Parse JFS POST body for inputs + the viewer's FID (used for gate eval).
+  // Production: verify signature so inputs/fid are trustworthy.
+  // Dev / preview / emulator: skip verification so curl + snap-emulator work.
   let inputs: Record<string, unknown> = {};
   let fid: number | undefined;
   try {
     const parsed = await parseRequest(req.clone(), {
-      skipJFSVerification: true,
-      maxSkewSeconds: 60 * 60 * 24 * 365,
+      skipJFSVerification: !VERIFY_JFS_IN_PROD,
+      maxSkewSeconds: VERIFY_JFS_IN_PROD ? 60 * 5 : 60 * 60 * 24 * 365,
     });
     if (parsed.success && parsed.action.type === 'post') {
       inputs = parsed.action.inputs ?? {};
@@ -230,7 +253,10 @@ export async function POST(
   } catch {
     // try fallback raw parse
   }
-  if (Object.keys(inputs).length === 0 || fid === undefined) {
+  // Raw fallback: base64-decode the payload field directly. Only safe in dev /
+  // emulator because it skips the JFS signature; in prod we trust parseRequest
+  // above + would log unsigned attempts.
+  if ((Object.keys(inputs).length === 0 || fid === undefined) && !VERIFY_JFS_IN_PROD) {
     try {
       const body = (await req.clone().json()) as {
         payload?: string;
