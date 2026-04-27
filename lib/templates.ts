@@ -11,7 +11,7 @@ export const TEMPLATES: TemplateMeta[] = [
   {
     id: 'fan-vote',
     name: 'Fan Vote',
-    description: 'Header, poll, and share button. Replace the question and options with your own.',
+    description: 'Poll + share. Live tally after voting.',
     doc: {
       version: 1,
       title: 'Fan Vote',
@@ -44,7 +44,7 @@ export const TEMPLATES: TemplateMeta[] = [
   {
     id: 'music-drop',
     name: 'Music Drop',
-    description: 'Announce a new track with artist and share',
+    description: 'New track + artist link + share button.',
     doc: {
       version: 1,
       title: 'Music Drop',
@@ -84,7 +84,7 @@ export const TEMPLATES: TemplateMeta[] = [
   {
     id: 'fundraiser',
     name: 'Fundraiser',
-    description: 'Progress chart for fundraising campaign',
+    description: 'Top supporters chart + contribute link.',
     doc: {
       version: 1,
       title: 'Fundraiser',
@@ -128,7 +128,7 @@ export const TEMPLATES: TemplateMeta[] = [
   {
     id: 'event-rsvp',
     name: 'Event RSVP',
-    description: 'Simple event announcement with RSVP link',
+    description: 'Event details + RSVP + share invite.',
     doc: {
       version: 1,
       title: 'Event RSVP',
@@ -167,7 +167,7 @@ export const TEMPLATES: TemplateMeta[] = [
   {
     id: 'top-of-week',
     name: 'Top of the Week',
-    description: 'Showcase top weekly performers',
+    description: 'Top 7 leaderboard chart + share.',
     doc: {
       version: 1,
       title: 'Top of the Week',
@@ -208,7 +208,7 @@ export const TEMPLATES: TemplateMeta[] = [
   {
     id: 'two-truths-lie',
     name: 'Two Truths and a Lie',
-    description: 'Interactive game with confetti reveal',
+    description: 'Toggle game with confetti on submit.',
     doc: {
       version: 1,
       title: 'Two Truths and a Lie',
@@ -247,7 +247,7 @@ export const TEMPLATES: TemplateMeta[] = [
   {
     id: 'member-welcome',
     name: 'Member Welcome',
-    description: 'Onboard new members with links',
+    description: 'Onboarding header + 3 link buttons.',
     doc: {
       version: 1,
       title: 'Welcome to the Community',
@@ -300,7 +300,7 @@ export const TEMPLATES: TemplateMeta[] = [
   {
     id: 'quick-poll',
     name: 'Quick Poll',
-    description: 'Smallest possible Snap - one question, two options.',
+    description: 'Smallest Snap - 1 question, 2 options.',
     doc: {
       version: 1,
       title: 'Quick poll',
@@ -327,7 +327,7 @@ export const TEMPLATES: TemplateMeta[] = [
   {
     id: 'idea-box',
     name: 'Idea Box',
-    description: 'Chatbot collects what people are building. Replies inline. Logs every entry.',
+    description: 'Chatbot logs ideas + replies inline.',
     doc: {
       version: 1,
       title: 'What are you building?',
@@ -365,7 +365,7 @@ export const TEMPLATES: TemplateMeta[] = [
   {
     id: 'bug-report',
     name: 'Bug Report',
-    description: 'Feedback block tagging the creator with a structured prefix.',
+    description: 'Feedback block that tags the creator.',
     doc: {
       version: 1,
       title: 'Bug report',
@@ -401,7 +401,7 @@ export const TEMPLATES: TemplateMeta[] = [
   {
     id: 'multi-step-form',
     name: 'Multi-step Form',
-    description: 'Three-page intake walkthrough modeled on the official snap-catalog example.',
+    description: '3-page intake form. Shows multi-page nav.',
     doc: {
       version: 1,
       title: 'Tell us about your build',
