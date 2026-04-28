@@ -4,6 +4,8 @@ No-code builder for Farcaster Snaps. Stack blocks. Hit Deploy. Share to feed.
 
 Live: [zlank.online](https://zlank.online)
 
+> Working on this repo? Read [STATUS.md](./STATUS.md) first - current session state, what shipped, what's deferred, next-session candidates.
+
 ## What it does
 
 Build interactive in-feed Farcaster Snaps without writing code:
