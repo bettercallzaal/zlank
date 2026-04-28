@@ -7,10 +7,22 @@ import { getMySnaps, removeMySnap, clearMySnaps, formatRelativeTime, getThemeCol
 export default function DashboardPage() {
   const [snaps, setSnaps] = useState<MySnapEntry[]>([]);
   const [mounted, setMounted] = useState(false);
+  const [statsMap, setStatsMap] = useState<Record<string, SnapStats>>({});
 
   useEffect(() => {
-    setSnaps(getMySnaps());
+    const list = getMySnaps();
+    setSnaps(list);
     setMounted(true);
+    if (list.length === 0) return;
+    // Batch-fetch stats for every saved snap in one round-trip instead of
+    // N parallel /api/snaps/{id}/stats requests.
+    const ids = list.map((s) => s.id).join(',');
+    fetch(`/api/snaps/stats?ids=${encodeURIComponent(ids)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { stats?: Record<string, SnapStats> } | null) => {
+        if (d?.stats) setStatsMap(d.stats);
+      })
+      .catch(() => {});
   }, []);
 
   function handleDelete(id: string) {
@@ -47,12 +59,12 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-4xl font-bold text-[#f5a623] mb-2">My Snaps</h1>
-            <p className="text-[#8aa0bd]">{snaps.length} saved snap{snaps.length !== 1 ? 's' : ''}</p>
+            <p className="text-[#b8c4d4]">{snaps.length} saved snap{snaps.length !== 1 ? 's' : ''}</p>
           </div>
           {snaps.length > 0 && (
             <button
               onClick={handleClearAll}
-              className="text-sm text-[#8aa0bd] hover:text-red-400 border border-[#1f3252] px-3 py-2 rounded hover:border-red-400 transition"
+              className="text-sm text-[#b8c4d4] hover:text-red-400 border border-[#1f3252] px-3 py-2 rounded hover:border-red-400 transition"
             >
               Clear all
             </button>
@@ -61,7 +73,7 @@ export default function DashboardPage() {
 
         {snaps.length === 0 ? (
           <div className="bg-[#122440] border border-[#1f3252] rounded-lg p-12 text-center">
-            <p className="text-[#8aa0bd] mb-6">No saved Snaps yet. Build your first one!</p>
+            <p className="text-[#b8c4d4] mb-6">No saved Snaps yet. Build your first one!</p>
             <Link
               href="/builder"
               className="inline-block bg-[#f5a623] text-[#0a1628] font-bold px-6 py-3 rounded hover:bg-[#ffc14d] transition"
@@ -75,6 +87,7 @@ export default function DashboardPage() {
               <SnapCard
                 key={snap.id}
                 snap={snap}
+                stats={statsMap[snap.id] ?? null}
                 onDelete={() => handleDelete(snap.id)}
               />
             ))}
@@ -91,23 +104,16 @@ interface SnapStats {
   lastViewAt: number | null;
 }
 
-function SnapCard({ snap, onDelete }: { snap: MySnapEntry; onDelete: () => void }) {
-  const [stats, setStats] = useState<SnapStats | null>(null);
+function SnapCard({
+  snap,
+  stats,
+  onDelete,
+}: {
+  snap: MySnapEntry;
+  stats: SnapStats | null;
+  onDelete: () => void;
+}) {
   const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/snaps/${snap.id}/stats`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((s) => {
-        if (cancelled || !s) return;
-        setStats({ views: s.views ?? 0, interactions: s.interactions ?? 0, lastViewAt: s.lastViewAt ?? null });
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [snap.id]);
 
   function copyShareUrl() {
     const url = `${window.location.origin}/api/snap/${snap.id}`;
@@ -126,7 +132,7 @@ function SnapCard({ snap, onDelete }: { snap: MySnapEntry; onDelete: () => void 
         />
         <div className="flex-1 min-w-0">
           <h3 className="text-lg font-bold text-[#e8eef7] truncate">{snap.title}</h3>
-          <p className="text-sm text-[#8aa0bd]">
+          <p className="text-sm text-[#b8c4d4]">
             {snap.blockCount} block{snap.blockCount !== 1 ? 's' : ''} - {formatRelativeTime(snap.updatedAt)}
             {stats && (
               <>
@@ -181,7 +187,7 @@ function SnapCard({ snap, onDelete }: { snap: MySnapEntry; onDelete: () => void 
         </Link>
         <button
           onClick={onDelete}
-          className="px-3 py-2 text-sm border border-[#1f3252] text-[#8aa0bd] rounded hover:border-red-400 hover:text-red-400 transition"
+          className="px-3 py-2 text-sm border border-[#1f3252] text-[#b8c4d4] rounded hover:border-red-400 hover:text-red-400 transition"
         >
           Delete
         </button>

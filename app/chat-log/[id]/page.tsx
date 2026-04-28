@@ -42,11 +42,11 @@ export default async function ChatLogPage({ params, searchParams }: Props) {
     <main className="min-h-screen bg-[#0a1628] text-[#e8eef7] px-4 py-8">
       <div className="max-w-3xl mx-auto">
         <div className="mb-6">
-          <Link href="/" className="text-[#8aa0bd] hover:text-[#f5a623] text-sm">
+          <Link href="/" className="text-[#b8c4d4] hover:text-[#f5a623] text-sm">
             &larr; Zlank
           </Link>
           <h1 className="text-2xl font-bold text-[#f5a623] mt-2">Chat log</h1>
-          <p className="text-sm text-[#8aa0bd] mt-1">
+          <p className="text-sm text-[#b8c4d4] mt-1">
             {title} <span className="text-[#1f3252]">|</span> snap{' '}
             <code className="text-[#f5a623]">{id}</code>
           </p>
@@ -90,7 +90,7 @@ function ChatRow({ entry }: { entry: ChatLogEntry }) {
     : null;
   return (
     <li className="bg-[#122440] border border-[#1f3252] rounded-lg p-4">
-      <div className="flex items-center justify-between gap-3 mb-2 text-xs text-[#8aa0bd]">
+      <div className="flex items-center justify-between gap-3 mb-2 text-xs text-[#b8c4d4]">
         <div>
           {fidLink ? (
             <a
@@ -113,7 +113,7 @@ function ChatRow({ entry }: { entry: ChatLogEntry }) {
       <p className="text-sm text-[#e8eef7] whitespace-pre-wrap">{entry.text}</p>
       {entry.reply && (
         <div className="mt-3 pt-3 border-t border-[#1f3252]">
-          <p className="text-xs text-[#8aa0bd] mb-1">reply</p>
+          <p className="text-xs text-[#b8c4d4] mb-1">reply</p>
           <p className="text-sm text-[#c9d4e3] whitespace-pre-wrap">
             {entry.reply}
           </p>
@@ -127,7 +127,7 @@ function EmptyState({ id }: { id: string }) {
   return (
     <div className="bg-[#122440] border border-[#1f3252] rounded-lg p-8 text-center">
       <p className="text-[#e8eef7] mb-2">No entries yet.</p>
-      <p className="text-sm text-[#8aa0bd]">
+      <p className="text-sm text-[#b8c4d4]">
         Cast{' '}
         <code className="text-[#f5a623]">
           https://zlank.online/api/snap/{id}
