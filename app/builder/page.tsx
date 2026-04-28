@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { sdk } from '@farcaster/miniapp-sdk';
 import {
@@ -473,10 +473,10 @@ export default function Builder() {
             Zlank
           </Link>
           <nav className="hidden sm:flex gap-3 text-sm">
-            <Link href="/templates" className="text-[#8aa0bd] hover:text-[#f5a623] transition">
+            <Link href="/templates" className="text-[#b8c4d4] hover:text-[#f5a623] transition">
               Templates
             </Link>
-            <Link href="/dashboard" className="text-[#8aa0bd] hover:text-[#f5a623] transition">
+            <Link href="/dashboard" className="text-[#b8c4d4] hover:text-[#f5a623] transition">
               My Snaps
             </Link>
           </nav>
@@ -516,7 +516,7 @@ export default function Builder() {
       <div className="flex-1 grid md:grid-cols-2">
         <section className="border-r border-[#1f3252] p-4 space-y-3 overflow-y-auto">
           <div className="space-y-2">
-            <label className="text-xs text-[#8aa0bd] uppercase tracking-wide">Snap title</label>
+            <label className="text-xs text-[#b8c4d4] uppercase tracking-wide">Snap title</label>
             <input
               value={doc.title}
               onChange={(e) => setDoc((d) => ({ ...d, title: e.target.value.slice(0, 60) }))}
@@ -525,7 +525,7 @@ export default function Builder() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs text-[#8aa0bd] uppercase tracking-wide">Theme</label>
+            <label className="text-xs text-[#b8c4d4] uppercase tracking-wide">Theme</label>
             <select
               value={doc.theme}
               onChange={(e) => setDoc((d) => ({ ...d, theme: e.target.value as SnapDoc['theme'] }))}
@@ -549,7 +549,7 @@ export default function Builder() {
           </label>
 
           <details className="border border-[#1f3252] rounded">
-            <summary className="cursor-pointer px-2 py-1 text-xs text-[#8aa0bd] hover:text-[#f5a623]">
+            <summary className="cursor-pointer px-2 py-1 text-xs text-[#b8c4d4] hover:text-[#f5a623]">
               Coin {doc.coin?.caip19 ? `(buy $${doc.coin.symbol || 'token'} button auto-injected)` : '(none)'}
             </summary>
             <div className="p-2 space-y-2 text-xs">
@@ -587,7 +587,7 @@ export default function Builder() {
 
           <div className="border-t border-[#1f3252] pt-3 space-y-2">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs text-[#8aa0bd] uppercase tracking-wide">Pages</h3>
+              <h3 className="text-xs text-[#b8c4d4] uppercase tracking-wide">Pages</h3>
               <button
                 onClick={addPage}
                 className="text-xs text-[#f5a623] hover:underline"
@@ -622,7 +622,7 @@ export default function Builder() {
           </div>
 
           <div className="border-t border-[#1f3252] pt-3 space-y-2">
-            <h3 className="text-xs text-[#8aa0bd] uppercase tracking-wide">Blocks</h3>
+            <h3 className="text-xs text-[#b8c4d4] uppercase tracking-wide">Blocks</h3>
             {currentPage?.blocks.map((block, idx) => (
               <BlockEditor
                 key={idx}
@@ -641,12 +641,12 @@ export default function Builder() {
           </div>
 
           <div className="border-t border-[#1f3252] pt-3 space-y-2">
-            <h3 className="text-xs text-[#8aa0bd] uppercase tracking-wide">Import</h3>
+            <h3 className="text-xs text-[#b8c4d4] uppercase tracking-wide">Import</h3>
             <ImportFromSnap onImport={importFromSnap} />
           </div>
 
           <div className="border-t border-[#1f3252] pt-3 space-y-2">
-            <h3 className="text-xs text-[#8aa0bd] uppercase tracking-wide">Add block</h3>
+            <h3 className="text-xs text-[#b8c4d4] uppercase tracking-wide">Add block</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {BLOCK_OPTIONS.map((opt) => (
                 <button
@@ -664,23 +664,23 @@ export default function Builder() {
         </section>
 
         <section className="p-4 overflow-y-auto">
-          <h3 className="text-xs text-[#8aa0bd] uppercase tracking-wide mb-3">Live preview - {currentPageId}</h3>
+          <h3 className="text-xs text-[#b8c4d4] uppercase tracking-wide mb-3">Live preview - {currentPageId}</h3>
           <div className="bg-[#122440] border border-[#1f3252] rounded-lg p-4 space-y-3">
             {currentPage?.blocks.map((b, i) => (
               <BlockPreview key={i} block={b} theme={doc.theme} allPageIds={doc.pages.map((p) => p.id)} />
             ))}
             {!currentPage?.blocks || currentPage.blocks.length === 0 && (
-              <p className="text-[#8aa0bd] text-center py-8">No blocks yet. Add one from the left.</p>
+              <p className="text-[#b8c4d4] text-center py-8">No blocks yet. Add one from the left.</p>
             )}
           </div>
 
           {deployed && (
             <div className="mt-6 p-4 bg-[#122440] border border-[#f5a623] rounded-lg space-y-2">
-              <p className="text-sm text-[#8aa0bd]">Deployed. Snap is live at:</p>
+              <p className="text-sm text-[#b8c4d4]">Deployed. Snap is live at:</p>
               <code className="block text-xs bg-[#0a1628] p-2 rounded break-all">
                 /api/snap/{deployed.length <= 20 ? deployed : `${deployed.slice(0, 60)}...`}
               </code>
-              <p className="text-xs text-[#8aa0bd]">
+              <p className="text-xs text-[#b8c4d4]">
                 Hit Share to feed (top right) to drop it in a cast.
               </p>
               {deployErr && (
@@ -724,8 +724,36 @@ function BlockEditor({
     : dragOver
       ? 'border-[#f5a623]'
       : 'border-[#1f3252]';
+
+  // iOS Safari drops native HTML5 DnD events. Hand-roll touch listeners on
+  // the drag handle so reorder works on phones too. Touch starts on handle,
+  // tracks finger over neighboring blocks via elementFromPoint, drops on
+  // touchend.
+  const touchStartIdxRef = useRef<number | null>(null);
+  function onTouchStart() {
+    if (!onReorder) return;
+    touchStartIdxRef.current = idx;
+  }
+  function onTouchMove(e: React.TouchEvent) {
+    if (touchStartIdxRef.current === null) return;
+    e.preventDefault();
+  }
+  function onTouchEnd(e: React.TouchEvent) {
+    if (!onReorder || touchStartIdxRef.current === null) return;
+    const t = e.changedTouches[0];
+    const targetEl = document.elementFromPoint(t.clientX, t.clientY);
+    const blockEl = targetEl?.closest('[data-block-idx]') as HTMLElement | null;
+    const targetIdx = blockEl ? Number(blockEl.dataset.blockIdx) : NaN;
+    const fromIdx = touchStartIdxRef.current;
+    touchStartIdxRef.current = null;
+    if (Number.isFinite(targetIdx) && targetIdx !== fromIdx) {
+      onReorder(fromIdx, targetIdx);
+    }
+  }
+
   return (
     <div
+      data-block-idx={idx}
       draggable={!!onReorder}
       onDragStart={(e) => {
         e.dataTransfer.setData('text/plain', String(idx));
@@ -757,10 +785,14 @@ function BlockEditor({
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs text-[#f5a623] uppercase flex items-center gap-1">
           <span
-            className="cursor-grab text-[#5e7290]"
-            aria-label="Drag handle - press up or dn buttons on touch devices"
-            title="Drag to reorder (use up/dn buttons on mobile)"
-            role="img"
+            className="cursor-grab text-[#5e7290] touch-none select-none px-1"
+            aria-label="Drag handle"
+            title="Drag to reorder"
+            role="button"
+            tabIndex={0}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
           >
             ::
           </span>
@@ -1076,7 +1108,7 @@ function BlockEditor({
             className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
           />
           <div className="flex gap-2">
-            <span className="text-sm text-[#8aa0bd] self-center">@</span>
+            <span className="text-sm text-[#b8c4d4] self-center">@</span>
             <input
               value={block.mention}
               onChange={(e) => onChange({ mention: e.target.value.replace(/^@/, '') } as Partial<Block>)}
@@ -1144,7 +1176,7 @@ function BlockEditor({
             className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
           />
           <div className="flex gap-2">
-            <span className="self-center text-xs text-[#8aa0bd]">Poll block #</span>
+            <span className="self-center text-xs text-[#b8c4d4]">Poll block #</span>
             <input
               type="number"
               value={block.pollBlockIdx}
@@ -1152,7 +1184,7 @@ function BlockEditor({
               placeholder="0"
               className="w-20 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
             />
-            <span className="self-center text-xs text-[#8aa0bd]">Top N:</span>
+            <span className="self-center text-xs text-[#b8c4d4]">Top N:</span>
             <input
               type="number"
               value={block.topN ?? 5}
@@ -1166,7 +1198,7 @@ function BlockEditor({
           </p>
         </>
       )}
-      {block.type === 'divider' && <p className="text-xs text-[#8aa0bd]">Visual separator. No fields.</p>}
+      {block.type === 'divider' && <p className="text-xs text-[#b8c4d4]">Visual separator. No fields.</p>}
 
       <GateEditor block={block} onChange={onChange} />
     </div>
@@ -1270,7 +1302,7 @@ function ImageUploader({
             href={currentUrl}
             target="_blank"
             rel="noreferrer"
-            className="text-xs text-[#8aa0bd] underline truncate max-w-[180px]"
+            className="text-xs text-[#b8c4d4] underline truncate max-w-[180px]"
           >
             {currentUrl.replace(/^https?:\/\//, '').slice(0, 40)}
           </a>
@@ -1326,7 +1358,7 @@ function GateEditor({ block, onChange }: { block: Block; onChange: (patch: Parti
 
   return (
     <details className="border border-[#1f3252] rounded">
-      <summary className="cursor-pointer px-2 py-1 text-xs text-[#8aa0bd] hover:text-[#f5a623]">
+      <summary className="cursor-pointer px-2 py-1 text-xs text-[#b8c4d4] hover:text-[#f5a623]">
         Gate {gate ? `(holders only - ${gate.symbol || 'token'} >= ${gate.minBalance})` : '(public)'}
       </summary>
       <div className="p-2 space-y-2 text-xs">
@@ -1382,7 +1414,7 @@ function GateEditor({ block, onChange }: { block: Block; onChange: (patch: Parti
               </>
             )}
             <div className="flex gap-2">
-              <span className="self-center text-[#8aa0bd]">Min balance:</span>
+              <span className="self-center text-[#b8c4d4]">Min balance:</span>
               <input
                 value={gate.minBalance}
                 onChange={(e) => patchGate({ minBalance: e.target.value.trim() })}
@@ -1579,7 +1611,7 @@ function PollEditor({
           + add option
         </button>
       )}
-      <p className="text-xs text-[#8aa0bd]">v1: vote tallying ships in v0.5 with DB.</p>
+      <p className="text-xs text-[#b8c4d4]">v1: vote tallying ships in v0.5 with DB.</p>
     </>
   );
 }
@@ -1591,7 +1623,7 @@ function BlockPreview({ block, theme, allPageIds = [] }: { block: Block; theme: 
     return (
       <div className="border-l-4 pl-3" style={{ borderColor: accent }}>
         <div className="font-bold">{block.title}</div>
-        {block.subtitle && <div className="text-sm text-[#8aa0bd] mt-1">{block.subtitle}</div>}
+        {block.subtitle && <div className="text-sm text-[#b8c4d4] mt-1">{block.subtitle}</div>}
       </div>
     );
   }
@@ -1622,7 +1654,7 @@ function BlockPreview({ block, theme, allPageIds = [] }: { block: Block; theme: 
   if (block.type === 'image') {
     const aspectClass = block.aspect === '1:1' ? 'aspect-square' : block.aspect === '16:9' ? 'aspect-video' : block.aspect === '4:3' ? 'aspect-4/3' : 'aspect-[9/16]';
     return (
-      <div className={`bg-[#0a1628] border border-[#1f3252] rounded ${aspectClass} flex items-center justify-center text-xs text-[#8aa0bd]`}>
+      <div className={`bg-[#0a1628] border border-[#1f3252] rounded ${aspectClass} flex items-center justify-center text-xs text-[#b8c4d4]`}>
         Image: {block.alt}
       </div>
     );
@@ -1642,7 +1674,7 @@ function BlockPreview({ block, theme, allPageIds = [] }: { block: Block; theme: 
     return (
       <div className="bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 space-y-1">
         <div className="font-medium" style={{ color: accent }}>{block.displayName}</div>
-        <div className="text-xs text-[#8aa0bd]">FID {block.fid} - {block.label}</div>
+        <div className="text-xs text-[#b8c4d4]">FID {block.fid} - {block.label}</div>
       </div>
     );
   }
@@ -1650,7 +1682,7 @@ function BlockPreview({ block, theme, allPageIds = [] }: { block: Block; theme: 
     return (
       <div className="bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 space-y-2">
         <div className="font-bold text-sm">{block.question}</div>
-        <ul className="text-xs text-[#8aa0bd] space-y-1">
+        <ul className="text-xs text-[#b8c4d4] space-y-1">
           {block.options.map((opt, i) => (
             <li key={i}>- {opt}</li>
           ))}
@@ -1666,14 +1698,14 @@ function BlockPreview({ block, theme, allPageIds = [] }: { block: Block; theme: 
         <div className="space-y-1">
           {block.bars.map((bar, i) => (
             <div key={i} className="flex items-center gap-2 text-xs">
-              <span className="w-20 truncate text-[#8aa0bd] text-right">{bar.label}</span>
+              <span className="w-20 truncate text-[#b8c4d4] text-right">{bar.label}</span>
               <div className="flex-1 h-2 bg-[#1f3252] rounded">
                 <div
                   className="h-full rounded"
                   style={{ width: `${(bar.value / max) * 100}%`, background: accent }}
                 />
               </div>
-              <span className="w-8 text-[#8aa0bd] tabular-nums">{bar.value}</span>
+              <span className="w-8 text-[#b8c4d4] tabular-nums">{bar.value}</span>
             </div>
           ))}
         </div>
@@ -1683,7 +1715,7 @@ function BlockPreview({ block, theme, allPageIds = [] }: { block: Block; theme: 
   if (block.type === 'toggle') {
     return (
       <div className="bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 space-y-1">
-        <div className="text-xs text-[#8aa0bd]">{block.label}</div>
+        <div className="text-xs text-[#b8c4d4]">{block.label}</div>
         <div className={block.orientation === 'vertical' ? 'flex flex-col gap-1' : 'flex gap-1'}>
           {block.options.map((opt, i) => (
             <span
@@ -1702,7 +1734,7 @@ function BlockPreview({ block, theme, allPageIds = [] }: { block: Block; theme: 
     const pct = Math.min(100, (block.value / Math.max(1, block.max)) * 100);
     return (
       <div className="space-y-1">
-        <div className="text-xs text-[#8aa0bd]">{block.label}</div>
+        <div className="text-xs text-[#b8c4d4]">{block.label}</div>
         <div className="h-2 bg-[#1f3252] rounded">
           <div className="h-full rounded" style={{ width: `${pct}%`, background: accent }} />
         </div>
@@ -1712,7 +1744,7 @@ function BlockPreview({ block, theme, allPageIds = [] }: { block: Block; theme: 
   if (block.type === 'slider') {
     return (
       <div className="space-y-1">
-        <div className="text-xs text-[#8aa0bd]">{block.label} ({block.min}-{block.max}, default {block.defaultValue})</div>
+        <div className="text-xs text-[#b8c4d4]">{block.label} ({block.min}-{block.max}, default {block.defaultValue})</div>
         <input type="range" min={block.min} max={block.max} value={block.defaultValue} readOnly className="w-full" />
       </div>
     );
@@ -1721,7 +1753,7 @@ function BlockPreview({ block, theme, allPageIds = [] }: { block: Block; theme: 
     return (
       <div className="flex items-center justify-between bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2">
         <span className="text-sm">{block.label}</span>
-        <span className={`px-2 py-0.5 text-xs rounded ${block.defaultChecked ? 'text-[#0a1628]' : 'text-[#8aa0bd]'}`} style={block.defaultChecked ? { background: accent } : { background: '#1f3252' }}>
+        <span className={`px-2 py-0.5 text-xs rounded ${block.defaultChecked ? 'text-[#0a1628]' : 'text-[#b8c4d4]'}`} style={block.defaultChecked ? { background: accent } : { background: '#1f3252' }}>
           {block.defaultChecked ? 'on' : 'off'}
         </span>
       </div>

@@ -1,5 +1,6 @@
 import { createPublicClient, http, erc20Abi, getAddress, type Address } from 'viem';
 import { base } from 'viem/chains';
+import { cacheGet, cacheSet } from './kv';
 
 // Token-balance gate. Server-side only. POST handler resolves the user's
 // FID -> primary verified ETH address (Neynar) -> ERC-20 balance on Base.
@@ -83,13 +84,30 @@ export interface GateResult {
   balance?: string;
 }
 
+// Cache gate results per (fid, token, minBalance) for 5 minutes. Cuts the
+// per-render Neynar fetch + RPC call when the same viewer reloads.
+const GATE_CACHE_TTL_SEC = 5 * 60;
+
+function gateCacheKey(rule: GateRule, fid: number): string {
+  return `gate:${fid}:${rule.token.toLowerCase()}:${rule.minBalance}:${rule.decimals ?? 18}`;
+}
+
 export async function evaluateGate(
   rule: GateRule,
   ctx: GateContext,
 ): Promise<GateResult> {
   if (!ctx.fid) return { passed: false, reason: 'no_fid' };
+
+  const cacheKey = gateCacheKey(rule, ctx.fid);
+  const cached = await cacheGet<GateResult>(cacheKey);
+  if (cached) return cached;
+
   const address = await fetchPrimaryAddress(ctx.fid);
-  if (!address) return { passed: false, reason: 'no_address' };
+  if (!address) {
+    const result: GateResult = { passed: false, reason: 'no_address' };
+    // Don't cache no_address - the user might verify a wallet later.
+    return result;
+  }
   const decimals = rule.decimals ?? 18;
   const minWei = parseHumanAmount(rule.minBalance, decimals);
   try {
@@ -99,10 +117,12 @@ export async function evaluateGate(
       functionName: 'balanceOf',
       args: [address],
     });
-    if (balance >= minWei) {
-      return { passed: true, reason: 'ok', balance: balance.toString() };
-    }
-    return { passed: false, reason: 'below_threshold', balance: balance.toString() };
+    const result: GateResult = balance >= minWei
+      ? { passed: true, reason: 'ok', balance: balance.toString() }
+      : { passed: false, reason: 'below_threshold', balance: balance.toString() };
+    // Cache pass + fail-by-balance. Skip caching rpc_error.
+    await cacheSet(cacheKey, result, GATE_CACHE_TTL_SEC);
+    return result;
   } catch {
     return { passed: false, reason: 'rpc_error' };
   }

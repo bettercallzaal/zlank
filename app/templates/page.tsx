@@ -16,7 +16,7 @@ export default function TemplatesPage() {
 
       <div className="max-w-6xl mx-auto px-6 py-12">
         <h1 className="text-4xl font-bold text-[#f5a623] mb-4">Templates Gallery</h1>
-        <p className="text-[#8aa0bd] mb-12 max-w-2xl">
+        <p className="text-[#b8c4d4] mb-12 max-w-2xl">
           Pick a template below to get started. Each is fully customizable - edit titles, links, colors, and more.
         </p>
 
@@ -27,7 +27,7 @@ export default function TemplatesPage() {
         </div>
 
         <div className="mt-16 pt-8 border-t border-[#1f3252]">
-          <p className="text-[#8aa0bd] text-sm">
+          <p className="text-[#b8c4d4] text-sm">
             Not finding what you need? <Link href="/builder" className="text-[#f5a623] hover:underline">Start from scratch</Link>
           </p>
         </div>
@@ -49,8 +49,8 @@ function TemplateCard({ template }: { template: TemplateMeta }) {
           />
           <h3 className="text-lg font-bold text-[#e8eef7]">{template.name}</h3>
         </div>
-        <p className="text-sm text-[#8aa0bd] mb-4">{template.description}</p>
-        <p className="text-xs text-[#8aa0bd] mb-6">{blockCount} block{blockCount !== 1 ? 's' : ''}</p>
+        <p className="text-sm text-[#b8c4d4] mb-4">{template.description}</p>
+        <p className="text-xs text-[#b8c4d4] mb-6">{blockCount} block{blockCount !== 1 ? 's' : ''}</p>
       </div>
 
       <Link

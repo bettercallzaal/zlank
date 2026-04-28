@@ -139,6 +139,32 @@ export async function loadSnapDoc(id: string): Promise<SnapDoc | null> {
   }
 }
 
+/**
+ * Generic short-lived cache (gate evaluations, Neynar lookups, etc.).
+ * Returns null on cache miss or Redis unreachable. Caller falls back to fresh.
+ */
+export async function cacheGet<T>(key: string): Promise<T | null> {
+  const c = await getClient();
+  if (!c) return null;
+  try {
+    const raw = await c.get(`cache:${key}`);
+    if (!raw) return null;
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+export async function cacheSet<T>(key: string, value: T, ttlSec: number): Promise<void> {
+  const c = await getClient();
+  if (!c) return;
+  try {
+    await c.set(`cache:${key}`, JSON.stringify(value), { EX: ttlSec });
+  } catch {
+    // ignore cache write errors
+  }
+}
+
 export function isShortId(idOrEncoded: string): boolean {
   return idOrEncoded.length <= 20 && /^[A-Za-z0-9_-]+$/.test(idOrEncoded);
 }
@@ -252,11 +278,14 @@ export async function bumpStat(
   if (!c) return;
   const key = STATS_PREFIX + snapId;
   const tsField = field === 'views' ? 'lastViewAt' : 'lastInteractionAt';
-  await Promise.all([
-    c.hIncrBy(key, field, 1),
-    c.hSet(key, tsField, String(Date.now())),
-    c.expire(key, 60 * 60 * 24 * 365),
-  ]);
+  // Pipeline three Redis commands into one round-trip instead of three
+  // parallel awaits. Saves ~2x latency on the stat bump path.
+  await c
+    .multi()
+    .hIncrBy(key, field, 1)
+    .hSet(key, tsField, String(Date.now()))
+    .expire(key, 60 * 60 * 24 * 365)
+    .exec();
 }
 
 export async function getStats(snapId: string): Promise<SnapStats> {

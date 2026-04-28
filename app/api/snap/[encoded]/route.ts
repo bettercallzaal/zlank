@@ -179,7 +179,7 @@ function htmlResponse(doc: SnapDoc, origin: string, encoded: string): NextRespon
 <body style="background:#0a1628;color:#e8eef7;font-family:-apple-system,sans-serif;padding:40px;text-align:center;">
 <h1 style="color:#f5a623;">${escapeHtml(doc.title)}</h1>
 <p>This is a Farcaster Snap. <a href="${viewerUrl}" style="color:#f5a623;">Open in browser</a> or share in a Farcaster cast to render inline.</p>
-<p><a href="${origin}" style="color:#8aa0bd;">Build your own at Zlank</a></p>
+<p><a href="${origin}" style="color:#b8c4d4;">Build your own at Zlank</a></p>
 </body>
 </html>`;
 

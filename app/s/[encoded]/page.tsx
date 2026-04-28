@@ -93,7 +93,7 @@ export default async function SnapViewer({ params, searchParams }: SnapViewerPro
           />
         ))}
       </div>
-      <footer className="mt-8 pt-4 border-t border-[#1f3252] text-xs text-[#8aa0bd] text-center">
+      <footer className="mt-8 pt-4 border-t border-[#1f3252] text-xs text-[#b8c4d4] text-center">
         Built with{' '}
         <Link href="/" className="text-[#f5a623] hover:underline">
           Zlank
@@ -122,7 +122,7 @@ function BlockView({
         <div className="border-l-4 pl-3 py-1" style={{ borderColor: accent }}>
           <div className="text-xl font-bold">{block.title}</div>
           {block.subtitle && (
-            <div className="text-sm text-[#8aa0bd] mt-1">{block.subtitle}</div>
+            <div className="text-sm text-[#b8c4d4] mt-1">{block.subtitle}</div>
           )}
         </div>
       );
@@ -209,7 +209,7 @@ function BlockView({
           <div className="font-bold" style={{ color: accent }}>
             {block.displayName}
           </div>
-          <div className="text-xs text-[#8aa0bd] mt-1">
+          <div className="text-xs text-[#b8c4d4] mt-1">
             FID {block.fid} - {block.label || 'View profile'}
           </div>
         </a>
@@ -228,7 +228,7 @@ function BlockView({
               </button>
             ))}
           </div>
-          <p className="text-xs text-[#8aa0bd]">Vote tallying ships in v0.5 with DB.</p>
+          <p className="text-xs text-[#b8c4d4]">Vote tallying ships in v0.5 with DB.</p>
         </div>
       );
     case 'progress': {
@@ -239,7 +239,7 @@ function BlockView({
           <div className="h-3 bg-[#1f3252] rounded">
             <div className="h-full rounded transition-all" style={{ width: `${pct}%`, background: accent }} />
           </div>
-          <div className="text-xs text-[#8aa0bd]">{block.value} / {block.max}</div>
+          <div className="text-xs text-[#b8c4d4]">{block.value} / {block.max}</div>
         </div>
       );
     }
@@ -248,7 +248,7 @@ function BlockView({
         <div className="space-y-2 bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3">
           <div className="text-sm">{block.label}: {block.defaultValue}</div>
           <input type="range" min={block.min} max={block.max} defaultValue={block.defaultValue} className="w-full" style={{ accentColor: accent }} />
-          <div className="flex justify-between text-xs text-[#8aa0bd]">
+          <div className="flex justify-between text-xs text-[#b8c4d4]">
             <span>{block.min}</span>
             <span>{block.max}</span>
           </div>
@@ -272,7 +272,7 @@ function BlockView({
               <div key={i} className="space-y-0.5">
                 <div className="flex justify-between text-xs">
                   <span>{bar.label}</span>
-                  <span className="text-[#8aa0bd]">{bar.value}</span>
+                  <span className="text-[#b8c4d4]">{bar.value}</span>
                 </div>
                 <div className="h-2 bg-[#1f3252] rounded">
                   <div className="h-full rounded" style={{ width: `${pct}%`, background: accent }} />
@@ -311,7 +311,7 @@ function BlockView({
           />
           <button
             disabled
-            className="w-full bg-[#1f3252] text-[#8aa0bd] rounded px-3 py-2 text-sm cursor-not-allowed"
+            className="w-full bg-[#1f3252] text-[#b8c4d4] rounded px-3 py-2 text-sm cursor-not-allowed"
           >
             {block.label}
           </button>
@@ -324,7 +324,7 @@ function BlockView({
       return (
         <div className="bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3 space-y-2">
           <div className="font-bold" style={{ color: accent }}>{block.title}</div>
-          <div className="text-xs text-[#8aa0bd]">{block.prompt}</div>
+          <div className="text-xs text-[#b8c4d4]">{block.prompt}</div>
           <input
             placeholder={block.placeholder ?? 'Type here...'}
             disabled
@@ -332,7 +332,7 @@ function BlockView({
           />
           <button
             disabled
-            className="w-full bg-[#1f3252] text-[#8aa0bd] rounded px-3 py-2 text-sm cursor-not-allowed"
+            className="w-full bg-[#1f3252] text-[#b8c4d4] rounded px-3 py-2 text-sm cursor-not-allowed"
           >
             {block.label}
           </button>
@@ -352,7 +352,7 @@ function BlockView({
         <div className="bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3 space-y-2">
           <div className="font-bold text-sm" style={{ color: accent }}>{block.title}</div>
           {visible.length === 0 ? (
-            <p className="text-xs text-[#8aa0bd]">No votes yet.</p>
+            <p className="text-xs text-[#b8c4d4]">No votes yet.</p>
           ) : (
             visible.map((bar, i) => {
               const max = Math.max(...visible.map((b) => b.value), 1);
@@ -361,7 +361,7 @@ function BlockView({
                 <div key={i} className="space-y-0.5">
                   <div className="flex justify-between text-xs">
                     <span>#{i + 1} {bar.label}</span>
-                    <span className="text-[#8aa0bd]">{bar.value}</span>
+                    <span className="text-[#b8c4d4]">{bar.value}</span>
                   </div>
                   <div className="h-2 bg-[#1f3252] rounded">
                     <div className="h-full rounded" style={{ width: `${pct}%`, background: accent }} />

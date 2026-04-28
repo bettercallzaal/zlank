@@ -125,8 +125,12 @@ export function validateDoc(doc: SnapDoc, baseUrl = 'https://zlank.online/api/sn
   const pages: ValidatePageResult[] = [];
   const errors: string[] = [];
 
-  // Doc-level lint: page IDs are required + unique; navigate targets must
-  // resolve to a real page on this doc.
+  // Doc-level lint: theme enum, page IDs required + unique, navigate targets
+  // must resolve to a real page on this doc.
+  const VALID_THEMES = ['purple', 'amber', 'blue', 'green', 'red', 'pink', 'teal', 'gray'];
+  if (!VALID_THEMES.includes(doc.theme)) {
+    errors.push(`theme "${doc.theme}" is not one of ${VALID_THEMES.join(', ')}`);
+  }
   const seenPageIds = new Set<string>();
   const knownPageIds = new Set(doc.pages.map((p) => p.id));
   for (const page of doc.pages) {

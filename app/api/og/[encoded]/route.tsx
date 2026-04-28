@@ -84,7 +84,7 @@ export async function GET(
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'flex-end',
-            color: '#8aa0bd',
+            color: '#b8c4d4',
             fontSize: 24,
           }}
         >
