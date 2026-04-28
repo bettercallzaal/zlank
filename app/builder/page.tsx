@@ -351,9 +351,21 @@ export default function Builder() {
     setDeployErr(null);
     setValidationIssues([]);
     try {
+      // In Mini App context, attach a Quick Auth JWT so the server can record
+      // the creator's FID as the snap's owner. Browser-only callers skip the
+      // token; their snaps stay unowned until first authenticated /coin call.
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (isMiniApp) {
+        try {
+          const { token } = await sdk.quickAuth.getToken();
+          if (token) headers.authorization = `Bearer ${token}`;
+        } catch {
+          // continue without owner attribution if token fetch fails
+        }
+      }
       const res = await fetch('/api/snaps', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ doc }),
       });
       if (!res.ok) {
