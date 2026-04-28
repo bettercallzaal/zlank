@@ -139,6 +139,33 @@ export async function loadSnapDoc(id: string): Promise<SnapDoc | null> {
   }
 }
 
+const OWNER_PREFIX = 'owner:';
+
+/**
+ * Owner FID for a saved snap. Stored separately from the SnapDoc so older
+ * snaps without an owner key remain readable + claimable. null = no owner
+ * recorded; undefined never (we treat absence as null).
+ */
+export async function getSnapOwner(snapId: string): Promise<number | null> {
+  const c = await getClient();
+  if (!c) return null;
+  const raw = await c.get(OWNER_PREFIX + snapId);
+  if (!raw) return null;
+  const fid = Number(raw);
+  return Number.isInteger(fid) && fid >= 1 ? fid : null;
+}
+
+/**
+ * Set an owner FID for a snap if (and only if) none is set yet (NX). Returns
+ * true if this call became the owner, false if someone else already owns it.
+ */
+export async function claimSnapOwner(snapId: string, fid: number): Promise<boolean> {
+  const c = await getClient();
+  if (!c) return false;
+  const set = await c.set(OWNER_PREFIX + snapId, String(fid), { NX: true });
+  return set === 'OK';
+}
+
 /**
  * Generic short-lived cache (gate evaluations, Neynar lookups, etc.).
  * Returns null on cache miss or Redis unreachable. Caller falls back to fresh.

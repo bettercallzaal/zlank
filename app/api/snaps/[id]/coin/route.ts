@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { setSnapCoin } from '@/lib/kv';
+import { authorizeOwner } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
@@ -7,32 +8,31 @@ export const runtime = 'nodejs';
 // Body: { caip19: "eip155:8453/erc20:0x...", symbol?: "MYTOKEN" }
 // or:   { clear: true } to remove the coin association.
 //
-// Updates BOTH the runtime snap key and the editable snapdoc key in Redis
-// so the swap_token button auto-injects on next render.
+// AUTH (in order):
+//  1. Authorization: Bearer <ZLANK_ADMIN_SECRET> - admin bypass
+//  2. Authorization: Bearer <quickAuth JWT> where the JWT's FID matches the
+//     snap's stored owner (set at save time)
+//  3. If snap has no owner yet (legacy or unowned), the first valid FID
+//     to call this endpoint claims ownership.
+//
+// Anonymous callers and FID-mismatch callers get 401.
 
 // Allowed chain IDs: Ethereum mainnet, Base, Optimism, Polygon, Arbitrum, Zora.
 const CAIP19_RE = /^eip155:(1|8453|10|137|42161|7777777)\/erc20:0x[a-fA-F0-9]{40}$/;
-
-// AUTH: requires Authorization: Bearer <ZLANK_ADMIN_SECRET>. The builder UI
-// sets snap.coin at save time inside the SnapDoc itself, so this endpoint is
-// admin-only for now (use case: rotate/clear post-deploy without re-saving).
-// When per-FID owner auth lands, this gate flips to per-snap-owner check.
-function isAuthed(req: NextRequest): boolean {
-  const expected = process.env.ZLANK_ADMIN_SECRET;
-  if (!expected) return false;
-  const header = req.headers.get('authorization') ?? '';
-  const m = /^Bearer\s+(\S+)$/.exec(header);
-  return !!m && m[1] === expected;
-}
 
 export async function POST(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  if (!isAuthed(req)) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
   const { id } = await ctx.params;
+  const auth = await authorizeOwner(id, req);
+  if (!auth.ok) {
+    return NextResponse.json(
+      { error: 'unauthorized', reason: auth.reason },
+      { status: 401 },
+    );
+  }
+
   let body: { caip19?: string; symbol?: string; clear?: boolean };
   try {
     body = (await req.json()) as typeof body;
@@ -44,7 +44,7 @@ export async function POST(
     const r = await setSnapCoin(id, null);
     if (r.missing) return NextResponse.json({ error: 'snap not found' }, { status: 404 });
     if (r.updated === 0) return NextResponse.json({ error: 'snap corrupt' }, { status: 500 });
-    return NextResponse.json({ ok: true, cleared: true, updated: r.updated });
+    return NextResponse.json({ ok: true, cleared: true, updated: r.updated, via: auth.via });
   }
 
   const caip19 = body.caip19?.trim();
@@ -61,5 +61,10 @@ export async function POST(
   const r = await setSnapCoin(id, { caip19, symbol });
   if (r.missing) return NextResponse.json({ error: 'snap not found' }, { status: 404 });
   if (r.updated === 0) return NextResponse.json({ error: 'snap corrupt' }, { status: 500 });
-  return NextResponse.json({ ok: true, updated: r.updated, coin: { caip19, symbol } });
+  return NextResponse.json({
+    ok: true,
+    updated: r.updated,
+    coin: { caip19, symbol },
+    via: auth.via,
+  });
 }

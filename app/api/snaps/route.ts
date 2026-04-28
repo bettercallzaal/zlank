@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isKvAvailable, saveSnap } from '@/lib/kv';
+import { isKvAvailable, saveSnap, claimSnapOwner } from '@/lib/kv';
 import { encodeSnap } from '@/lib/encode';
 import { validateDoc } from '@/lib/validate-snap';
 import { rateLimit, rateLimitResponse, ipOf } from '@/lib/rate-limit';
+import { extractFid } from '@/lib/auth';
 import type { SnapDoc } from '@/lib/blocks';
 
 const SNAPS_BURST_MAX = Number(process.env.ZLANK_SNAPS_BURST_MAX ?? 5);
@@ -66,7 +67,16 @@ export async function POST(req: NextRequest) {
 
   try {
     const id = await saveSnap(body.doc);
-    return NextResponse.json({ id, short: true });
+    // Capture owner FID at save time when caller presents a valid Quick Auth
+    // JWT (Mini App context). Browser-only callers (no token) leave the snap
+    // unowned; first authenticated caller to /coin can claim it.
+    const fid = await extractFid(req);
+    if (fid) {
+      await claimSnapOwner(id, fid).catch((err) =>
+        console.error('claimSnapOwner failed', id, err),
+      );
+    }
+    return NextResponse.json({ id, short: true, owner: fid ?? null });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: 'Failed to save snap', detail: msg }, { status: 500 });
