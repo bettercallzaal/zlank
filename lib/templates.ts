@@ -1,10 +1,22 @@
 import type { SnapDoc } from './blocks';
 
+export type TemplateCategory =
+  | 'sports'
+  | 'tokens'
+  | 'mint'
+  | 'subscribe'
+  | 'predict'
+  | 'community'
+  | 'generic';
+
 export interface TemplateMeta {
   id: string;
   name: string;
   description: string;
   doc: SnapDoc;
+  /** Co-branding partner, when this is a partner-signature template. */
+  partner?: { id: string; name: string };
+  category?: TemplateCategory;
 }
 
 export const TEMPLATES: TemplateMeta[] = [
@@ -488,8 +500,302 @@ export const TEMPLATES: TemplateMeta[] = [
       ],
     },
   },
+  {
+    id: 'footy-match-day',
+    name: 'Match Day',
+    description: 'Live scoreboard + odds + share. Powered by Footy App.',
+    partner: { id: 'footy', name: 'Footy App' },
+    category: 'sports',
+    doc: {
+      version: 2,
+      title: 'Match Day',
+      theme: 'green',
+      partner: { id: 'footy', name: 'Footy App', attribution: true, url: 'https://fc-footy.vercel.app' },
+      forkable: true,
+      embedMode: 'iframe',
+      dataSource: [
+        { id: 'match', kind: 'rest', url: 'https://fc-footy.vercel.app/api/match/REPLACE_ME', refreshSec: 30 },
+        { id: 'odds', kind: 'rest', url: 'https://fc-footy.vercel.app/api/odds/REPLACE_ME', refreshSec: 60 },
+      ],
+      pages: [
+        {
+          id: 'home',
+          blocks: [
+            { type: 'header', title: 'Match Day', subtitle: 'Live now', badgeText: 'LIVE', badgeColor: 'green' },
+            { type: 'liveScore', home: 'Home', away: 'Away', dataSourceId: 'match', showMinute: true },
+            {
+              type: 'oddsTicker',
+              market: 'Match Winner',
+              legs: [
+                { label: 'Home', odds: '2.10' },
+                { label: 'Draw', odds: '3.40' },
+                { label: 'Away', odds: '3.20' },
+              ],
+              dataSourceId: 'odds',
+            },
+            { type: 'share', label: 'Bring a friend', text: 'Watching this match - join the cast', icon: 'share' },
+            { type: 'link', label: 'Open in Footy App', url: 'https://fc-footy.vercel.app', icon: 'external-link', variant: 'primary' },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: 'clanker-token-launch',
+    name: 'Token Launch',
+    description: 'One-tap community token deploy. Powered by Clanker.',
+    partner: { id: 'clanker', name: 'Clanker' },
+    category: 'tokens',
+    doc: {
+      version: 2,
+      title: 'Launch your token',
+      theme: 'amber',
+      partner: { id: 'clanker', name: 'Clanker', attribution: true, url: 'https://clanker.world' },
+      forkable: true,
+      embedMode: 'iframe',
+      pages: [
+        {
+          id: 'home',
+          blocks: [
+            { type: 'header', title: 'Launch a community token', subtitle: 'Deploys on Base in one tap', badgeText: 'TOKENS', badgeColor: 'amber' },
+            { type: 'tokenDeploy', name: 'My Token', symbol: 'MYTOK', description: 'Replace with your token details before sharing.', clankerVersion: 'v4' },
+            { type: 'text', content: 'Edit the name, symbol, and description, then share to feed.' },
+            { type: 'share', label: 'Share the launch', text: 'Just launched a token', icon: 'share' },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: 'zora-coin-this-cast',
+    name: 'Coin This Cast',
+    description: 'Turn a post into a tradeable coin. Powered by Zora.',
+    partner: { id: 'zora', name: 'Zora' },
+    category: 'tokens',
+    doc: {
+      version: 2,
+      title: 'Coin this cast',
+      theme: 'purple',
+      partner: { id: 'zora', name: 'Zora', attribution: true, url: 'https://zora.co' },
+      forkable: true,
+      embedMode: 'iframe',
+      pages: [
+        {
+          id: 'home',
+          blocks: [
+            { type: 'header', title: 'Coin this cast', subtitle: 'Every post can be a coin', badgeText: 'ZORA', badgeColor: 'purple' },
+            { type: 'coinPost', postId: 'REPLACE_WITH_ZORA_COIN_ID', showHolders: true, showPrice: true, buyButton: true, zoraUrl: 'https://zora.co' },
+            { type: 'text', content: 'Replace the coin id with your Zora post coin, then share.' },
+            { type: 'share', label: 'Share the coin', text: 'Coined this post on Zora', icon: 'share' },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: 'hypersub-creator-subscription',
+    name: 'Creator Subscription',
+    description: 'Onchain recurring subscription. Powered by Hypersub.',
+    partner: { id: 'hypersub', name: 'Hypersub' },
+    category: 'subscribe',
+    doc: {
+      version: 2,
+      title: 'Subscribe',
+      theme: 'blue',
+      partner: { id: 'hypersub', name: 'Hypersub', attribution: true, url: 'https://hypersub.xyz' },
+      forkable: true,
+      embedMode: 'iframe',
+      pages: [
+        {
+          id: 'home',
+          blocks: [
+            { type: 'header', title: 'Subscribe to my work', subtitle: 'Onchain, recurring, cancel anytime', badgeText: 'SUBS', badgeColor: 'blue' },
+            { type: 'text', content: 'Subscribers get gated posts and drops. Replace the contract address with your STP contract.' },
+            {
+              type: 'subscribeButton',
+              label: 'Subscribe - 30 days',
+              subContractAddress: '0x0000000000000000000000000000000000000000',
+              chainId: 8453,
+              durationDays: 30,
+              priceCurrency: 'USDC',
+            },
+            { type: 'share', label: 'Share', text: 'Just opened subscriptions', icon: 'share' },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: 'polymarket-prediction',
+    name: 'Prediction Market',
+    description: 'Embed a live market + share. Powered by Polymarket.',
+    partner: { id: 'polymarket', name: 'Polymarket' },
+    category: 'predict',
+    doc: {
+      version: 2,
+      title: 'Will it happen?',
+      theme: 'teal',
+      partner: { id: 'polymarket', name: 'Polymarket', attribution: true, url: 'https://polymarket.com' },
+      forkable: true,
+      embedMode: 'iframe',
+      pages: [
+        {
+          id: 'home',
+          blocks: [
+            { type: 'header', title: 'Make your prediction', subtitle: 'Live market odds', badgeText: 'PREDICT', badgeColor: 'teal' },
+            { type: 'marketEmbed', marketSlug: 'replace-with-market-slug', source: 'polymarket', showOdds: true, showVolume: true, betButton: true },
+            { type: 'share', label: 'Share the market', text: 'What do you think happens here?', icon: 'share' },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: 'bountycaster-task-board',
+    name: 'Bounty Board',
+    description: 'Post a bounty with escrow. Powered by Bountycaster.',
+    partner: { id: 'bountycaster', name: 'Bountycaster' },
+    category: 'community',
+    doc: {
+      version: 2,
+      title: 'Bounty board',
+      theme: 'green',
+      partner: { id: 'bountycaster', name: 'Bountycaster', attribution: true, url: 'https://bountycaster.xyz' },
+      forkable: true,
+      embedMode: 'iframe',
+      pages: [
+        {
+          id: 'home',
+          blocks: [
+            { type: 'header', title: 'Open bounty', subtitle: 'Claim it, ship it, get paid', badgeText: 'BOUNTY', badgeColor: 'green' },
+            {
+              type: 'bountyEscrow',
+              title: 'Build the thing',
+              description: 'Replace this with the task scope and acceptance criteria.',
+              amountUsd: 250,
+              bountycasterUrl: 'https://bountycaster.xyz',
+            },
+            { type: 'text', content: 'Edit the task, amount, and link, then share to find a hunter.' },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: 'highlight-mint-drop',
+    name: 'Mint Drop',
+    description: 'In-feed NFT mint. Powered by Highlight.',
+    partner: { id: 'highlight', name: 'Highlight' },
+    category: 'mint',
+    doc: {
+      version: 2,
+      title: 'Mint drop',
+      theme: 'pink',
+      partner: { id: 'highlight', name: 'Highlight', attribution: true, url: 'https://highlight.xyz' },
+      forkable: true,
+      embedMode: 'iframe',
+      pages: [
+        {
+          id: 'home',
+          blocks: [
+            { type: 'header', title: 'New drop is live', subtitle: 'Mint straight from the feed', badgeText: 'MINT', badgeColor: 'pink' },
+            { type: 'text', content: 'Replace the contract address with your Highlight collection.' },
+            {
+              type: 'mintButton',
+              label: 'Mint now',
+              contractAddress: '0x0000000000000000000000000000000000000000',
+              chainId: 8453,
+              partnerId: 'highlight',
+            },
+            { type: 'share', label: 'Share the drop', text: 'New mint is live', icon: 'share' },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: 'defifa-prediction-game',
+    name: 'Prediction Game',
+    description: 'Multi-round bracket pick. Powered by Defifa.',
+    partner: { id: 'defifa', name: 'Defifa' },
+    category: 'predict',
+    doc: {
+      version: 2,
+      title: 'Prediction game',
+      theme: 'amber',
+      partner: { id: 'defifa', name: 'Defifa', attribution: true, url: 'https://defifa.net' },
+      forkable: true,
+      embedMode: 'iframe',
+      pages: [
+        {
+          id: 'home',
+          blocks: [
+            { type: 'header', title: 'Round 1', subtitle: 'Pick the winner', badgeText: '1/2', badgeColor: 'amber' },
+            { type: 'poll', question: 'Who wins the semi-final?', options: ['Team A', 'Team B'] },
+            { type: 'navigate', label: 'Next: the final', pageId: 'final', icon: 'chevron-right', variant: 'primary' },
+          ],
+        },
+        {
+          id: 'final',
+          blocks: [
+            { type: 'header', title: 'Round 2', subtitle: 'Pick the champion', badgeText: '2/2', badgeColor: 'amber' },
+            { type: 'poll', question: 'Who lifts the trophy?', options: ['Team A', 'Team B', 'Team C', 'Team D'] },
+            { type: 'share', label: 'Challenge a friend', text: 'Made my picks - what are yours?', icon: 'share' },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: 'empirebuilder-treasury-board',
+    name: 'Treasury Board',
+    description: 'Top holders leaderboard + treasury link. Powered by Empire Builder.',
+    partner: { id: 'empirebuilder', name: 'Empire Builder' },
+    category: 'community',
+    doc: {
+      version: 2,
+      title: 'Treasury board',
+      theme: 'blue',
+      partner: { id: 'empirebuilder', name: 'Empire Builder', attribution: true, url: 'https://www.empirebuilder.world' },
+      forkable: true,
+      embedMode: 'iframe',
+      pages: [
+        {
+          id: 'home',
+          blocks: [
+            { type: 'header', title: 'Community treasury', subtitle: 'Top holders this round', badgeText: 'TREASURY', badgeColor: 'blue' },
+            {
+              type: 'chart',
+              title: 'Top holders',
+              bars: [
+                { label: 'Alice', value: 95 },
+                { label: 'Bob', value: 72 },
+                { label: 'Carol', value: 54 },
+              ],
+            },
+            { type: 'link', label: 'View the treasury', url: 'https://www.empirebuilder.world', icon: 'external-link', variant: 'primary' },
+            { type: 'share', label: 'Share the board', text: 'Check our community treasury', icon: 'share' },
+          ],
+        },
+      ],
+    },
+  },
 ];
 
 export function getTemplateById(id: string): TemplateMeta | undefined {
   return TEMPLATES.find((t) => t.id === id);
+}
+
+/** Every template co-branded with the given partner. */
+export function getTemplatesByPartner(partnerId: string): TemplateMeta[] {
+  return TEMPLATES.filter((t) => t.partner?.id === partnerId);
+}
+
+/** Every distinct partner that has at least one signature template. */
+export function listTemplatePartners(): Array<{ id: string; name: string }> {
+  const seen = new Map<string, string>();
+  for (const t of TEMPLATES) {
+    if (t.partner) seen.set(t.partner.id, t.partner.name);
+  }
+  return [...seen].map(([id, name]) => ({ id, name }));
 }
