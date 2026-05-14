@@ -95,6 +95,7 @@ function blockToElements(
   block: Block,
   idx: number,
   baseUrl: string,
+  resolvedData?: ResolvedDataSources,
 ): { ids: string[]; elements: Record<string, Element> } {
   const id = `b${idx}`;
   const elements: Record<string, Element> = {};
@@ -417,6 +418,26 @@ function blockToElements(
       ids.push(titleId, inputId, btnId);
       break;
     }
+    case 'liveScore': {
+      const feed = (resolvedData?.[block.dataSourceId] ?? null) as
+        | { home?: number | string; away?: number | string; minute?: number | string; status?: string }
+        | null;
+      const hasScore =
+        feed !== null && (feed.home !== undefined || feed.away !== undefined);
+      const title = hasScore
+        ? `${block.home} ${feed?.home ?? 0} - ${feed?.away ?? 0} ${block.away}`
+        : `${block.home} vs ${block.away}`;
+      const descParts: string[] = [];
+      if (feed?.status) descParts.push(String(feed.status));
+      if (block.showMinute && feed?.minute !== undefined && feed.minute !== '') {
+        descParts.push(`${feed.minute}'`);
+      }
+      const props: Record<string, unknown> = { title };
+      if (descParts.length) props.description = descParts.join(' - ');
+      elements[id] = { type: 'item', props };
+      ids.push(id);
+      break;
+    }
   }
 
   return { ids, elements };
@@ -518,7 +539,7 @@ export function docToSnap(
       return;
     }
 
-    const { ids, elements } = blockToElements(block, idx, baseUrl);
+    const { ids, elements } = blockToElements(block, idx, baseUrl, opts.resolvedData);
     Object.assign(allElements, elements);
     childIds.push(...ids);
   });

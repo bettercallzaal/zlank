@@ -126,6 +126,20 @@ function lintBlock(block: Block, idx: number, pageBlocks: Block[]): string[] {
         issues.push(`${here}: chart needs at least 1 bar`);
       }
       break;
+    case 'liveScore': {
+      if (!block.home?.trim()) issues.push(`${here}: liveScore home is empty`);
+      if (!block.away?.trim()) issues.push(`${here}: liveScore away is empty`);
+      if (!block.dataSourceId?.trim()) {
+        issues.push(`${here}: liveScore dataSourceId is empty`);
+      }
+      if (block.homeLogoUrl && !/^https:\/\//.test(block.homeLogoUrl)) {
+        issues.push(`${here}: liveScore homeLogoUrl must start with https://`);
+      }
+      if (block.awayLogoUrl && !/^https:\/\//.test(block.awayLogoUrl)) {
+        issues.push(`${here}: liveScore awayLogoUrl must start with https://`);
+      }
+      break;
+    }
     case 'leaderboard': {
       if (!block.title?.trim()) issues.push(`${here}: leaderboard title is empty`);
       const pIdx = block.pollBlockIdx;

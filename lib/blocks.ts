@@ -20,7 +20,8 @@ export type BlockType =
   | 'switch'
   | 'feedback'
   | 'chatbot'
-  | 'leaderboard';
+  | 'leaderboard'
+  | 'liveScore';
 
 // Subset of the 34 Snap icons - the most useful for blocks.
 export const ICONS = [
@@ -188,6 +189,22 @@ export interface FeedbackBlock {
   channelKey?: string;
 }
 
+// Live sports scoreboard. home/away are static labels; the score, minute, and
+// status come from a DataSource resolved at render time and looked up by
+// dataSourceId. The resolved value shape is { home, away, minute?, status? }.
+export interface LiveScoreBlock {
+  type: 'liveScore';
+  home: string;
+  away: string;
+  /** HTTPS only. */
+  homeLogoUrl?: string;
+  /** HTTPS only. */
+  awayLogoUrl?: string;
+  /** ID of the DataSource carrying { home, away, minute?, status? }. */
+  dataSourceId: string;
+  showMinute?: boolean;
+}
+
 type AnyBlock =
   | HeaderBlock
   | TextBlock
@@ -206,7 +223,8 @@ type AnyBlock =
   | SwitchBlock
   | FeedbackBlock
   | ChatbotBlock
-  | LeaderboardBlock;
+  | LeaderboardBlock
+  | LiveScoreBlock;
 
 // Optional `gate` lets a block require a token-balance check before render.
 // Evaluated server-side on POST; falsy on GET (no FID), so gated blocks
@@ -473,6 +491,16 @@ export function clampBlock(block: Block): Block {
         source: 'votes',
         pollBlockIdx: Math.max(0, Math.floor(Number(block.pollBlockIdx) || 0)),
         topN: Math.min(Math.max(Number(block.topN) || 5, 1), 6),
+      };
+    case 'liveScore':
+      return {
+        ...block,
+        home: block.home.slice(0, LABEL_MAX),
+        away: block.away.slice(0, LABEL_MAX),
+        homeLogoUrl: isHttpsUrl(block.homeLogoUrl) ? block.homeLogoUrl : undefined,
+        awayLogoUrl: isHttpsUrl(block.awayLogoUrl) ? block.awayLogoUrl : undefined,
+        dataSourceId: String(block.dataSourceId).slice(0, 64),
+        showMinute: block.showMinute === undefined ? undefined : Boolean(block.showMinute),
       };
   }
 }

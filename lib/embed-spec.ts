@@ -105,6 +105,22 @@ function blockToHtml(block: Block, data: ResolvedDataSources): string {
       const pct = Math.round((Math.min(block.value, block.max) / Math.max(block.max, 1)) * 100);
       return `<div class="block progress"><span class="bar-label">${escapeHtml(block.label)}</span><span class="bar-track"><span class="bar-fill" style="width:${pct}%"></span></span></div>`;
     }
+    case 'liveScore': {
+      const feed = (data[block.dataSourceId] ?? null) as
+        | { home?: number | string; away?: number | string; minute?: number | string; status?: string }
+        | null;
+      const hasScore = feed !== null && (feed.home !== undefined || feed.away !== undefined);
+      const line = hasScore
+        ? `${escapeHtml(block.home)} ${escapeHtml(String(feed?.home ?? 0))} - ${escapeHtml(String(feed?.away ?? 0))} ${escapeHtml(block.away)}`
+        : `${escapeHtml(block.home)} vs ${escapeHtml(block.away)}`;
+      const meta: string[] = [];
+      if (feed?.status) meta.push(escapeHtml(String(feed.status)));
+      if (block.showMinute && feed?.minute !== undefined && feed.minute !== '') {
+        meta.push(`${escapeHtml(String(feed.minute))}'`);
+      }
+      const metaHtml = meta.length ? `<p class="sub">${meta.join(' - ')}</p>` : '';
+      return `<div class="block hdr"><h2>${line}</h2>${metaHtml}</div>`;
+    }
     case 'poll':
     case 'toggle':
     case 'slider':

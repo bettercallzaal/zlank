@@ -136,6 +136,14 @@ function newBlock(type: BlockType, availablePageIds: string[] = []): Block {
         pollBlockIdx: 0,
         topN: 5,
       };
+    case 'liveScore':
+      return {
+        type: 'liveScore',
+        home: 'Home',
+        away: 'Away',
+        dataSourceId: '',
+        showMinute: true,
+      };
   }
 }
 
