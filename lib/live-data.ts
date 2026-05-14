@@ -7,9 +7,29 @@ import { isHttpsUrl } from './blocks';
 
 const FETCH_TIMEOUT_MS = 5000;
 const MAX_RESPONSE_BYTES = 64_000;
+const DEFAULT_REFRESH_SEC = 30;
 
 export type DataSourceValue = unknown | null;
 export type ResolvedDataSources = Record<string, DataSourceValue>;
+
+// Per-instance response cache. On Vercel this is per warm serverless instance,
+// not global - acceptable for v1, where the goal is to avoid re-fetching the
+// same feed on every render within a refresh window. Only successful (non-null)
+// resolutions are cached so a transient failure is not stuck for the window.
+interface CacheEntry {
+  at: number;
+  value: DataSourceValue;
+}
+const responseCache = new Map<string, CacheEntry>();
+
+/** Test-only: clear the response cache between tests. */
+export function __clearDataSourceCache(): void {
+  responseCache.clear();
+}
+
+function cacheKey(ds: DataSource): string {
+  return `${ds.url ?? ds.snapId ?? ds.id}|${ds.refreshSec ?? DEFAULT_REFRESH_SEC}`;
+}
 
 async function fetchSource(url: string): Promise<DataSourceValue> {
   if (!isHttpsUrl(url)) return null;
@@ -37,8 +57,16 @@ async function resolveOne(ds: DataSource): Promise<DataSourceValue> {
       case 'static':
         return ds.staticValue ?? null;
       case 'rest':
-      case 'webhook':
-        return ds.url ? fetchSource(ds.url) : null;
+      case 'webhook': {
+        if (!ds.url) return null;
+        const key = cacheKey(ds);
+        const ttlMs = (ds.refreshSec ?? DEFAULT_REFRESH_SEC) * 1000;
+        const hit = responseCache.get(key);
+        if (hit && Date.now() - hit.at < ttlMs) return hit.value;
+        const value = await fetchSource(ds.url);
+        if (value !== null) responseCache.set(key, { at: Date.now(), value });
+        return value;
+      }
       case 'snap':
         // Cross-snap aggregation is wired up in W10 (snap search); until then
         // a snap-kind source resolves to null rather than guessing an origin.

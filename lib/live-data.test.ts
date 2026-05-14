@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { resolveDataSources } from './live-data';
+import { resolveDataSources, __clearDataSourceCache } from './live-data';
 
 beforeEach(() => {
   vi.unstubAllGlobals();
+  __clearDataSourceCache();
 });
 
 describe('resolveDataSources', () => {
@@ -62,5 +63,31 @@ describe('resolveDataSources', () => {
     ]);
     expect(result.first).toEqual({ v: 1 });
     expect(result.second).toBe(42);
+  });
+});
+
+describe('resolveDataSources caching', () => {
+  it('caches a REST response within the refreshSec window', async () => {
+    const fetchSpy = vi.fn(async () => ({ ok: true, text: async () => '{"v":1}' }));
+    vi.stubGlobal('fetch', fetchSpy);
+    await resolveDataSources([{ id: 'a', kind: 'rest', url: 'https://x/cached', refreshSec: 30 }]);
+    await resolveDataSources([{ id: 'a', kind: 'rest', url: 'https://x/cached', refreshSec: 30 }]);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not cache a failed resolution', async () => {
+    const fetchSpy = vi.fn(async () => { throw new Error('down'); });
+    vi.stubGlobal('fetch', fetchSpy);
+    await resolveDataSources([{ id: 'a', kind: 'rest', url: 'https://x/down', refreshSec: 30 }]);
+    await resolveDataSources([{ id: 'a', kind: 'rest', url: 'https://x/down', refreshSec: 30 }]);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('keys the cache by url and refreshSec separately', async () => {
+    const fetchSpy = vi.fn(async () => ({ ok: true, text: async () => '{"v":1}' }));
+    vi.stubGlobal('fetch', fetchSpy);
+    await resolveDataSources([{ id: 'a', kind: 'rest', url: 'https://x/k', refreshSec: 30 }]);
+    await resolveDataSources([{ id: 'a', kind: 'rest', url: 'https://x/k', refreshSec: 60 }]);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });
