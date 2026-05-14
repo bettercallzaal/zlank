@@ -61,29 +61,41 @@ export async function saveSnap(doc: SnapDoc): Promise<string> {
 function migrateLoadedDoc(raw: unknown): SnapDoc | null {
   if (!raw || typeof raw !== 'object') return null;
   const d = raw as Record<string, unknown>;
-  if (d.version !== 1 || typeof d.title !== 'string') return null;
+  if ((d.version !== 1 && d.version !== 2) || typeof d.title !== 'string') return null;
+  const version = d.version as SnapDoc['version'];
+
+  // v2 fields carry through verbatim; clamped at save time, not on load.
+  const v2 = {
+    parentId: d.parentId as string | undefined,
+    partner: d.partner as SnapDoc['partner'],
+    forkable: d.forkable as boolean | undefined,
+    embedMode: d.embedMode as SnapDoc['embedMode'],
+    dataSource: d.dataSource as SnapDoc['dataSource'],
+  };
 
   // Old single-page format: has blocks array on root
   if (Array.isArray(d.blocks)) {
     return {
-      version: 1,
+      version,
       title: d.title,
       theme: (d.theme as SnapDoc['theme']) ?? 'purple',
       pages: [{ id: 'home', blocks: d.blocks as SnapDoc['pages'][number]['blocks'] }],
       confetti: d.confetti as boolean | undefined,
       coin: d.coin as SnapDoc['coin'],
+      ...v2,
     };
   }
 
   // New multi-page format
   if (Array.isArray(d.pages)) {
     return {
-      version: 1,
+      version,
       title: d.title,
       theme: (d.theme as SnapDoc['theme']) ?? 'purple',
       pages: d.pages as SnapDoc['pages'],
       confetti: d.confetti as boolean | undefined,
       coin: d.coin as SnapDoc['coin'],
+      ...v2,
     };
   }
 
@@ -353,4 +365,104 @@ export async function getChatLog(
     }
   }
   return out;
+}
+
+// Fork-tree + partner-scope indexes. A forked snap stores its parentId in the
+// SnapDoc; these indexes make the relationship queryable in both directions
+// (children of X, ancestors of Y) and let us list every snap tied to a partner.
+const FORK_CHILDREN_PREFIX = 'fork:children:';
+const FORK_PARENT_PREFIX = 'fork:parent:';
+const PARTNER_SNAPS_PREFIX = 'partner:snaps:';
+const PARTNER_OF_PREFIX = 'partner:of:';
+const FORK_ANCESTOR_MAX_DEPTH = 50;
+
+/** Record that childId was forked from parentId. */
+export async function recordFork(parentId: string, childId: string): Promise<void> {
+  const c = await getClient();
+  if (!c) return;
+  await c.sAdd(FORK_CHILDREN_PREFIX + parentId, childId);
+  await c.set(FORK_PARENT_PREFIX + childId, parentId);
+}
+
+/** Direct forks of a snap. */
+export async function getForkChildren(parentId: string): Promise<string[]> {
+  const c = await getClient();
+  if (!c) return [];
+  return c.sMembers(FORK_CHILDREN_PREFIX + parentId);
+}
+
+/** The snap a fork was derived from, or null if it is not a fork. */
+export async function getForkParent(childId: string): Promise<string | null> {
+  const c = await getClient();
+  if (!c) return null;
+  return c.get(FORK_PARENT_PREFIX + childId);
+}
+
+/**
+ * Walk the fork lineage from a snap up to its root. Oldest ancestor is last.
+ * Bounded by maxDepth so a malformed cyclic chain cannot loop forever.
+ */
+export async function getForkAncestors(
+  childId: string,
+  maxDepth = FORK_ANCESTOR_MAX_DEPTH,
+): Promise<string[]> {
+  const ancestors: string[] = [];
+  let current = childId;
+  for (let i = 0; i < maxDepth; i++) {
+    const parent = await getForkParent(current);
+    if (!parent) break;
+    ancestors.push(parent);
+    current = parent;
+  }
+  return ancestors;
+}
+
+/** Index a snap under its co-branding partner. */
+export async function recordPartnerSnap(partnerId: string, snapId: string): Promise<void> {
+  const c = await getClient();
+  if (!c) return;
+  await c.sAdd(PARTNER_SNAPS_PREFIX + partnerId, snapId);
+  await c.set(PARTNER_OF_PREFIX + snapId, partnerId);
+}
+
+/** Every snap indexed under a partner, capped at limit. */
+export async function listSnapsByPartner(partnerId: string, limit = 100): Promise<string[]> {
+  const c = await getClient();
+  if (!c) return [];
+  const all = await c.sMembers(PARTNER_SNAPS_PREFIX + partnerId);
+  return all.slice(0, limit);
+}
+
+const PARTNER_STAT_PREFIX = 'partner:stats:';
+export type PartnerStatMetric = 'views' | 'forks' | 'actions';
+export interface PartnerStats {
+  views: number;
+  forks: number;
+  actions: number;
+}
+
+/** Bump a partner-scoped counter (views, forks, or actions). */
+export async function incrementPartnerStat(
+  partnerId: string,
+  metric: PartnerStatMetric,
+): Promise<void> {
+  const c = await getClient();
+  if (!c) return;
+  await c.incr(`${PARTNER_STAT_PREFIX}${partnerId}:${metric}`);
+}
+
+/** Read the views/forks/actions counters for a partner. */
+export async function getPartnerStats(partnerId: string): Promise<PartnerStats> {
+  const c = await getClient();
+  if (!c) return { views: 0, forks: 0, actions: 0 };
+  const [views, forks, actions] = await Promise.all([
+    c.get(`${PARTNER_STAT_PREFIX}${partnerId}:views`),
+    c.get(`${PARTNER_STAT_PREFIX}${partnerId}:forks`),
+    c.get(`${PARTNER_STAT_PREFIX}${partnerId}:actions`),
+  ]);
+  return {
+    views: Number(views ?? 0),
+    forks: Number(forks ?? 0),
+    actions: Number(actions ?? 0),
+  };
 }

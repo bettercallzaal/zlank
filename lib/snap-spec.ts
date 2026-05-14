@@ -1,11 +1,47 @@
 import type { SnapDoc, Block } from './blocks';
 import type { GateResult } from './gates';
+import type { ResolvedDataSources } from './live-data';
 
 interface Element {
   type: string;
   props?: Record<string, unknown>;
   children?: string[];
   on?: Record<string, unknown>;
+}
+
+const PLACEHOLDER_RE = /\$\{data\.([a-zA-Z0-9_-]+)\}/g;
+
+/**
+ * Substitute ${data.<sourceId>} tokens in a string with resolved data source
+ * values. Missing or null values resolve to empty string; object values are
+ * JSON-stringified. Strings without tokens pass through untouched.
+ */
+export function applyPlaceholders(str: string, data: ResolvedDataSources): string {
+  return str.replace(PLACEHOLDER_RE, (_match, key: string) => {
+    const value = data[key];
+    if (value === null || value === undefined) return '';
+    return typeof value === 'string' ? value : JSON.stringify(value);
+  });
+}
+
+/**
+ * Return a copy of a block with ${data.X} placeholders substituted in its
+ * display-text fields. Only header and text blocks carry free-text content;
+ * other block types are returned unchanged.
+ */
+function substituteBlock(block: Block, data: ResolvedDataSources): Block {
+  if (block.type === 'text') {
+    return { ...block, content: applyPlaceholders(block.content, data) };
+  }
+  if (block.type === 'header') {
+    return {
+      ...block,
+      title: applyPlaceholders(block.title, data),
+      subtitle: block.subtitle ? applyPlaceholders(block.subtitle, data) : block.subtitle,
+      badgeText: block.badgeText ? applyPlaceholders(block.badgeText, data) : block.badgeText,
+    };
+  }
+  return block;
 }
 
 /**
@@ -59,6 +95,7 @@ function blockToElements(
   block: Block,
   idx: number,
   baseUrl: string,
+  resolvedData?: ResolvedDataSources,
 ): { ids: string[]; elements: Record<string, Element> } {
   const id = `b${idx}`;
   const elements: Record<string, Element> = {};
@@ -381,6 +418,189 @@ function blockToElements(
       ids.push(titleId, inputId, btnId);
       break;
     }
+    case 'liveScore': {
+      const feed = (resolvedData?.[block.dataSourceId] ?? null) as
+        | { home?: number | string; away?: number | string; minute?: number | string; status?: string }
+        | null;
+      const hasScore =
+        feed !== null && (feed.home !== undefined || feed.away !== undefined);
+      const title = hasScore
+        ? `${block.home} ${feed?.home ?? 0} - ${feed?.away ?? 0} ${block.away}`
+        : `${block.home} vs ${block.away}`;
+      const descParts: string[] = [];
+      if (feed?.status) descParts.push(String(feed.status));
+      if (block.showMinute && feed?.minute !== undefined && feed.minute !== '') {
+        descParts.push(`${feed.minute}'`);
+      }
+      const props: Record<string, unknown> = { title };
+      if (descParts.length) props.description = descParts.join(' - ');
+      elements[id] = { type: 'item', props };
+      ids.push(id);
+      break;
+    }
+    case 'oddsTicker': {
+      const marketId = `${id}_market`;
+      elements[marketId] = {
+        type: 'text',
+        props: { content: block.market, size: 'md', weight: 'bold' },
+      };
+      ids.push(marketId);
+      block.legs.forEach((leg, legIdx) => {
+        const legId = `${id}_leg${legIdx}`;
+        const label = `${leg.label}  ${leg.odds}`;
+        if (block.bookmakerUrl) {
+          elements[legId] = {
+            type: 'button',
+            props: { label, variant: 'secondary' },
+            on: { press: { action: 'open_url', params: { target: block.bookmakerUrl } } },
+          };
+        } else {
+          elements[legId] = { type: 'text', props: { content: label, size: 'sm' } };
+        }
+        ids.push(legId);
+      });
+      break;
+    }
+    case 'parlayBuilder': {
+      const titleId = `${id}_title`;
+      const groupId = `${id}_group`;
+      const btnId = `${id}_btn`;
+      elements[titleId] = {
+        type: 'text',
+        props: { content: block.title, size: 'md', weight: 'bold' },
+      };
+      elements[groupId] = {
+        type: 'toggle_group',
+        props: {
+          name: `parlay_${idx}`,
+          options: block.candidates.map((c) => `${c.label}  ${c.odds}`),
+          orientation: 'vertical',
+          multiple: true,
+        },
+      };
+      elements[btnId] = block.bookmakerUrl
+        ? {
+            type: 'button',
+            props: { label: 'Open bet slip', variant: 'primary', icon: 'external-link' },
+            on: { press: { action: 'open_url', params: { target: block.bookmakerUrl } } },
+          }
+        : {
+            type: 'button',
+            props: { label: 'Submit parlay', variant: 'primary', icon: 'check' },
+            on: { press: { action: 'submit', params: { target: baseUrl } } },
+          };
+      ids.push(titleId, groupId, btnId);
+      break;
+    }
+    case 'agentChat': {
+      const titleId = `${id}_title`;
+      const inputId = `${id}_input`;
+      const btnId = `${id}_btn`;
+      elements[titleId] = {
+        type: 'item',
+        props: { title: block.title, description: block.persona ? `${block.persona} agent` : 'AI agent' },
+      };
+      elements[inputId] = {
+        type: 'input',
+        props: {
+          name: `chat_${idx}`,
+          type: 'text',
+          placeholder: block.placeholder ?? 'Ask the agent...',
+          maxLength: 240,
+        },
+      };
+      elements[btnId] = {
+        type: 'button',
+        props: { label: block.label || 'Send', variant: 'primary', icon: 'message-circle' },
+        on: { press: { action: 'submit', params: { target: baseUrl } } },
+      };
+      ids.push(titleId, inputId, btnId);
+      break;
+    }
+    case 'mintButton': {
+      elements[id] = {
+        type: 'item',
+        props: { title: block.label, description: `Mint on chain ${block.chainId}` },
+      };
+      ids.push(id);
+      break;
+    }
+    case 'subscribeButton': {
+      elements[id] = {
+        type: 'item',
+        props: {
+          title: block.label,
+          description: `${block.durationDays}d subscription - ${block.priceCurrency}`,
+        },
+      };
+      ids.push(id);
+      break;
+    }
+    case 'bountyEscrow': {
+      const itemId = `${id}_item`;
+      elements[itemId] = {
+        type: 'item',
+        props: { title: `${block.title} - $${block.amountUsd}`, description: block.description },
+      };
+      ids.push(itemId);
+      if (block.bountycasterUrl) {
+        const btnId = `${id}_btn`;
+        elements[btnId] = {
+          type: 'button',
+          props: { label: 'View bounty', variant: 'primary', icon: 'external-link' },
+          on: { press: { action: 'open_url', params: { target: block.bountycasterUrl } } },
+        };
+        ids.push(btnId);
+      }
+      break;
+    }
+    case 'marketEmbed': {
+      const marketUrl =
+        block.source === 'polymarket'
+          ? `https://polymarket.com/event/${encodeURIComponent(block.marketSlug)}`
+          : block.source === 'kalshi'
+            ? `https://kalshi.com/markets/${encodeURIComponent(block.marketSlug)}`
+            : `https://manifold.markets/${encodeURIComponent(block.marketSlug)}`;
+      elements[id] = {
+        type: 'button',
+        props: {
+          label: block.betButton ? 'Place a bet' : 'View market',
+          variant: 'primary',
+          icon: 'trending-up',
+        },
+        on: { press: { action: 'open_url', params: { target: marketUrl } } },
+      };
+      ids.push(id);
+      break;
+    }
+    case 'tokenDeploy': {
+      const itemId = `${id}_item`;
+      const btnId = `${id}_btn`;
+      elements[itemId] = {
+        type: 'item',
+        props: { title: `${block.name} ($${block.symbol})`, description: block.description ?? 'Deploy a token' },
+      };
+      elements[btnId] = {
+        type: 'button',
+        props: { label: `Deploy $${block.symbol}`, variant: 'primary', icon: 'coins' },
+        on: { press: { action: 'open_url', params: { target: 'https://clanker.world/deploy' } } },
+      };
+      ids.push(itemId, btnId);
+      break;
+    }
+    case 'coinPost': {
+      if (block.zoraUrl) {
+        elements[id] = {
+          type: 'button',
+          props: { label: block.buyButton ? 'Buy this post' : 'View on Zora', variant: 'primary', icon: 'coins' },
+          on: { press: { action: 'open_url', params: { target: block.zoraUrl } } },
+        };
+      } else {
+        elements[id] = { type: 'item', props: { title: 'Coined post', description: block.postId } };
+      }
+      ids.push(id);
+      break;
+    }
   }
 
   return { ids, elements };
@@ -392,6 +612,9 @@ export interface DocToSnapOpts {
   gateResults?: Map<number, GateResult>;
   /** Per-block-index resolved leaderboard data (label, value pairs). */
   leaderboardData?: Map<number, Array<{ label: string; value: number }>>;
+  /** Resolved live data sources, keyed by DataSource.id. Substituted into
+   * ${data.X} placeholders in text and header blocks. */
+  resolvedData?: ResolvedDataSources;
 }
 
 export function docToSnap(
@@ -435,7 +658,10 @@ export function docToSnap(
     childIds.push(buyId, sepId);
   }
 
-  page.blocks.forEach((block, idx) => {
+  page.blocks.forEach((rawBlock, idx) => {
+    const block = opts.resolvedData
+      ? substituteBlock(rawBlock, opts.resolvedData)
+      : rawBlock;
     if (block.gate) {
       const result = opts.gateResults?.get(idx);
       const passed = result?.passed === true;
@@ -476,7 +702,7 @@ export function docToSnap(
       return;
     }
 
-    const { ids, elements } = blockToElements(block, idx, baseUrl);
+    const { ids, elements } = blockToElements(block, idx, baseUrl, opts.resolvedData);
     Object.assign(allElements, elements);
     childIds.push(...ids);
   });

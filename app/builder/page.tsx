@@ -136,6 +136,91 @@ function newBlock(type: BlockType, availablePageIds: string[] = []): Block {
         pollBlockIdx: 0,
         topN: 5,
       };
+    case 'liveScore':
+      return {
+        type: 'liveScore',
+        home: 'Home',
+        away: 'Away',
+        dataSourceId: '',
+        showMinute: true,
+      };
+    case 'oddsTicker':
+      return {
+        type: 'oddsTicker',
+        market: 'Match Winner',
+        legs: [
+          { label: 'Home', odds: '2.10' },
+          { label: 'Draw', odds: '3.40' },
+          { label: 'Away', odds: '3.20' },
+        ],
+      };
+    case 'parlayBuilder':
+      return {
+        type: 'parlayBuilder',
+        title: 'Build your parlay',
+        candidates: [
+          { id: 'leg-1', label: 'Team A to win', odds: '2.10' },
+          { id: 'leg-2', label: 'Over 2.5 goals', odds: '1.80' },
+        ],
+        maxLegs: 4,
+      };
+    case 'agentChat':
+      return {
+        type: 'agentChat',
+        title: 'Ask the agent',
+        systemPrompt:
+          'You are a helpful assistant. Reply briefly and ask one curious follow-up.',
+        persona: 'concierge',
+        label: 'Send',
+        placeholder: 'Ask anything...',
+      };
+    case 'mintButton':
+      return {
+        type: 'mintButton',
+        label: 'Mint',
+        contractAddress: '0x0000000000000000000000000000000000000000',
+        chainId: 8453,
+      };
+    case 'subscribeButton':
+      return {
+        type: 'subscribeButton',
+        label: 'Subscribe',
+        subContractAddress: '0x0000000000000000000000000000000000000000',
+        chainId: 8453,
+        durationDays: 30,
+        priceCurrency: 'USDC',
+      };
+    case 'bountyEscrow':
+      return {
+        type: 'bountyEscrow',
+        title: 'New bounty',
+        description: 'Describe the task and the payout conditions.',
+        amountUsd: 100,
+      };
+    case 'marketEmbed':
+      return {
+        type: 'marketEmbed',
+        marketSlug: 'will-it-happen',
+        source: 'polymarket',
+        showOdds: true,
+        betButton: true,
+      };
+    case 'tokenDeploy':
+      return {
+        type: 'tokenDeploy',
+        name: 'My Token',
+        symbol: 'MYTOK',
+        description: 'A community token.',
+        clankerVersion: 'v4',
+      };
+    case 'coinPost':
+      return {
+        type: 'coinPost',
+        postId: '',
+        showHolders: true,
+        showPrice: true,
+        buyButton: true,
+      };
   }
 }
 
@@ -157,10 +242,12 @@ export default function Builder() {
         // Browser context, no-op
       }
 
-      // Load from query params (id= for editing existing, template= for template)
+      // Load from query params: id= edits an existing snap, fork= clones a
+      // source snap as a new draft, template= seeds from a template.
       if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search);
         const snapId = params.get('id');
+        const forkId = params.get('fork');
         const templateId = params.get('template');
 
         if (snapId) {
@@ -191,6 +278,18 @@ export default function Builder() {
             // corrupt draft - fall through to server
           }
           if (!restored && serverDoc) setDoc(serverDoc);
+        } else if (forkId) {
+          // Fork an existing snap: the fork endpoint returns the source doc
+          // with parentId set, ready to save as a new snap.
+          try {
+            const res = await fetch(`/api/snaps/${forkId}/fork`, { method: 'POST' });
+            if (res.ok) {
+              const { doc: forkedDoc } = (await res.json()) as { doc: SnapDoc };
+              setDoc(forkedDoc);
+            }
+          } catch {
+            // ignore - fall back to the default doc
+          }
         } else if (templateId) {
           // Load template
           const template = getTemplateById(templateId);

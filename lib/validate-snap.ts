@@ -2,6 +2,54 @@ import { validateSnapResponse, snapResponseSchema } from '@farcaster/snap';
 import { snapJsonRenderCatalog } from '@farcaster/snap/ui';
 import { docToSnap } from './snap-spec';
 import type { SnapDoc, Block } from './blocks';
+import { isHttpsUrl } from './blocks';
+
+const VALID_EMBED_MODES = ['iframe', 'mini-app', 'snap-native'];
+const REFRESH_SEC_MIN = 10;
+const REFRESH_SEC_MAX = 3600;
+
+// Doc-level lint for the v2 fields (partner, dataSource, embedMode). Mirrors
+// the bounds enforced by clampSnap so the save endpoint can surface bad input
+// instead of silently coercing it.
+function lintV2Fields(doc: SnapDoc): string[] {
+  const issues: string[] = [];
+
+  if (doc.partner) {
+    if (!doc.partner.id?.trim()) issues.push('partner.id is required');
+    if (!doc.partner.name?.trim()) issues.push('partner.name is required');
+    if (doc.partner.url && !isHttpsUrl(doc.partner.url)) {
+      issues.push('partner.url must be HTTPS');
+    }
+    if (doc.partner.logoUrl && !isHttpsUrl(doc.partner.logoUrl)) {
+      issues.push('partner.logoUrl must be HTTPS');
+    }
+  }
+
+  if (doc.dataSource) {
+    doc.dataSource.forEach((ds, idx) => {
+      const here = `dataSource[${idx}]`;
+      if (!ds.id?.trim()) issues.push(`${here}: dataSource.id is required`);
+      if ((ds.kind === 'rest' || ds.kind === 'webhook') && !ds.url) {
+        issues.push(`${here}: dataSource.url required for kind=${ds.kind}`);
+      }
+      if (ds.url && !isHttpsUrl(ds.url)) {
+        issues.push(`${here}: dataSource.url must be HTTPS`);
+      }
+      if (ds.kind === 'snap' && !ds.snapId) {
+        issues.push(`${here}: dataSource.snapId required for kind=snap`);
+      }
+      if (ds.refreshSec !== undefined && (ds.refreshSec < REFRESH_SEC_MIN || ds.refreshSec > REFRESH_SEC_MAX)) {
+        issues.push(`${here}: dataSource.refreshSec must be in [${REFRESH_SEC_MIN}, ${REFRESH_SEC_MAX}]`);
+      }
+    });
+  }
+
+  if (doc.embedMode && !VALID_EMBED_MODES.includes(doc.embedMode)) {
+    issues.push(`embedMode "${doc.embedMode}" must be one of ${VALID_EMBED_MODES.join(', ')}`);
+  }
+
+  return issues;
+}
 
 // Source-doc lint - catches user input mistakes that snap-spec would silently
 // paper over (e.g. empty text content gets padded with a space at render).
@@ -78,6 +126,98 @@ function lintBlock(block: Block, idx: number, pageBlocks: Block[]): string[] {
         issues.push(`${here}: chart needs at least 1 bar`);
       }
       break;
+    case 'liveScore': {
+      if (!block.home?.trim()) issues.push(`${here}: liveScore home is empty`);
+      if (!block.away?.trim()) issues.push(`${here}: liveScore away is empty`);
+      if (!block.dataSourceId?.trim()) {
+        issues.push(`${here}: liveScore dataSourceId is empty`);
+      }
+      if (block.homeLogoUrl && !/^https:\/\//.test(block.homeLogoUrl)) {
+        issues.push(`${here}: liveScore homeLogoUrl must start with https://`);
+      }
+      if (block.awayLogoUrl && !/^https:\/\//.test(block.awayLogoUrl)) {
+        issues.push(`${here}: liveScore awayLogoUrl must start with https://`);
+      }
+      break;
+    }
+    case 'oddsTicker': {
+      if (!block.market?.trim()) issues.push(`${here}: oddsTicker market is empty`);
+      if (!Array.isArray(block.legs) || block.legs.length === 0) {
+        issues.push(`${here}: oddsTicker needs at least 1 leg`);
+      }
+      if (block.bookmakerUrl && !/^https:\/\//.test(block.bookmakerUrl)) {
+        issues.push(`${here}: oddsTicker bookmakerUrl must start with https://`);
+      }
+      break;
+    }
+    case 'parlayBuilder': {
+      if (!block.title?.trim()) issues.push(`${here}: parlayBuilder title is empty`);
+      if (!Array.isArray(block.candidates) || block.candidates.length === 0) {
+        issues.push(`${here}: parlayBuilder needs at least 1 candidate`);
+      }
+      if (block.bookmakerUrl && !/^https:\/\//.test(block.bookmakerUrl)) {
+        issues.push(`${here}: parlayBuilder bookmakerUrl must start with https://`);
+      }
+      break;
+    }
+    case 'agentChat': {
+      if (!block.title?.trim()) issues.push(`${here}: agentChat title is empty`);
+      if (!block.systemPrompt?.trim()) issues.push(`${here}: agentChat systemPrompt is empty`);
+      break;
+    }
+    case 'mintButton': {
+      if (!block.label?.trim()) issues.push(`${here}: mintButton label is empty`);
+      if (!/^0x[a-fA-F0-9]{40}$/.test(block.contractAddress ?? '')) {
+        issues.push(`${here}: mintButton contractAddress must be a 0x address`);
+      }
+      if (!Number.isInteger(block.chainId) || block.chainId <= 0) {
+        issues.push(`${here}: mintButton chainId must be a positive integer`);
+      }
+      break;
+    }
+    case 'subscribeButton': {
+      if (!block.label?.trim()) issues.push(`${here}: subscribeButton label is empty`);
+      if (!/^0x[a-fA-F0-9]{40}$/.test(block.subContractAddress ?? '')) {
+        issues.push(`${here}: subscribeButton subContractAddress must be a 0x address`);
+      }
+      if (!Number.isInteger(block.chainId) || block.chainId <= 0) {
+        issues.push(`${here}: subscribeButton chainId must be a positive integer`);
+      }
+      if (!Number.isFinite(block.durationDays) || block.durationDays < 1) {
+        issues.push(`${here}: subscribeButton durationDays must be >= 1`);
+      }
+      break;
+    }
+    case 'bountyEscrow': {
+      if (!block.title?.trim()) issues.push(`${here}: bountyEscrow title is empty`);
+      if (!block.description?.trim()) issues.push(`${here}: bountyEscrow description is empty`);
+      if (!Number.isFinite(block.amountUsd) || block.amountUsd < 0) {
+        issues.push(`${here}: bountyEscrow amountUsd must be >= 0`);
+      }
+      if (block.bountycasterUrl && !/^https:\/\//.test(block.bountycasterUrl)) {
+        issues.push(`${here}: bountyEscrow bountycasterUrl must start with https://`);
+      }
+      break;
+    }
+    case 'marketEmbed': {
+      if (!block.marketSlug?.trim()) issues.push(`${here}: marketEmbed marketSlug is empty`);
+      break;
+    }
+    case 'tokenDeploy': {
+      if (!block.name?.trim()) issues.push(`${here}: tokenDeploy name is empty`);
+      if (!block.symbol?.trim()) issues.push(`${here}: tokenDeploy symbol is empty`);
+      if (block.imageUrl && !/^https:\/\//.test(block.imageUrl)) {
+        issues.push(`${here}: tokenDeploy imageUrl must start with https://`);
+      }
+      break;
+    }
+    case 'coinPost': {
+      if (!block.postId?.trim()) issues.push(`${here}: coinPost postId is empty`);
+      if (block.zoraUrl && !/^https:\/\//.test(block.zoraUrl)) {
+        issues.push(`${here}: coinPost zoraUrl must start with https://`);
+      }
+      break;
+    }
     case 'leaderboard': {
       if (!block.title?.trim()) issues.push(`${here}: leaderboard title is empty`);
       const pIdx = block.pollBlockIdx;
@@ -138,6 +278,9 @@ export function validateDoc(doc: SnapDoc, baseUrl = 'https://zlank.online/api/sn
     else if (seenPageIds.has(page.id)) errors.push(`page id "${page.id}" is duplicated`);
     seenPageIds.add(page.id);
   }
+
+  // Doc-level v2 field lint (partner, dataSource, embedMode).
+  errors.push(...lintV2Fields(doc));
 
   for (const page of doc.pages) {
     const issues: string[] = [];
