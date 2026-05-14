@@ -329,6 +329,11 @@ function clampUrl(url: string): string {
   return url.slice(0, URL_MAX);
 }
 
+/** True only for a non-empty string that starts with https://. */
+export function isHttpsUrl(url: string | undefined): boolean {
+  return typeof url === 'string' && url.startsWith('https://');
+}
+
 function clampOptions(options: string[], minCount = 2, maxCount = 4): string[] {
   const clamped = options.map((o) => o.slice(0, OPTION_MAX));
   while (clamped.length < minCount) clamped.push(`Option ${clamped.length + 1}`);
@@ -470,6 +475,69 @@ export function clampBlock(block: Block): Block {
         topN: Math.min(Math.max(Number(block.topN) || 5, 1), 6),
       };
   }
+}
+
+const PARTNER_ID_MAX = 32;
+const PARTNER_NAME_MAX = 40;
+const PARENT_ID_MAX = 64;
+const DATA_SOURCE_ID_MAX = 64;
+const REFRESH_SEC_MIN = 10;
+const REFRESH_SEC_MAX = 3600;
+const DATA_SOURCE_KINDS: readonly DataSourceKind[] = ['rest', 'webhook', 'snap', 'static'];
+const EMBED_MODES: readonly EmbedMode[] = ['iframe', 'mini-app', 'snap-native'];
+
+function clampPartner(partner: PartnerMeta): PartnerMeta {
+  return {
+    id: String(partner.id).slice(0, PARTNER_ID_MAX),
+    name: String(partner.name).slice(0, PARTNER_NAME_MAX),
+    attribution: Boolean(partner.attribution),
+    url: isHttpsUrl(partner.url) ? partner.url : undefined,
+    logoUrl: isHttpsUrl(partner.logoUrl) ? partner.logoUrl : undefined,
+  };
+}
+
+function clampDataSource(ds: DataSource): DataSource {
+  return {
+    id: String(ds.id).slice(0, DATA_SOURCE_ID_MAX),
+    kind: DATA_SOURCE_KINDS.includes(ds.kind) ? ds.kind : 'static',
+    url: isHttpsUrl(ds.url) ? ds.url : undefined,
+    refreshSec:
+      ds.refreshSec === undefined
+        ? undefined
+        : Math.min(REFRESH_SEC_MAX, Math.max(REFRESH_SEC_MIN, ds.refreshSec)),
+    snapId: ds.snapId ? String(ds.snapId).slice(0, DATA_SOURCE_ID_MAX) : undefined,
+    staticValue: ds.staticValue,
+  };
+}
+
+/**
+ * Doc-level clamp. Runs every block through clampBlock and bounds the v2
+ * fields (partner, dataSource, parentId, forkable, embedMode). Preserves
+ * version, title, theme, confetti, and coin unchanged.
+ */
+export function clampSnap(doc: SnapDoc): SnapDoc {
+  return {
+    version: doc.version,
+    title: doc.title,
+    theme: doc.theme,
+    pages: doc.pages.map((page) => ({
+      id: page.id,
+      title: page.title,
+      blocks: page.blocks.map(clampBlock),
+    })),
+    confetti: doc.confetti,
+    coin: doc.coin,
+    parentId: doc.parentId ? String(doc.parentId).slice(0, PARENT_ID_MAX) : undefined,
+    partner: doc.partner ? clampPartner(doc.partner) : undefined,
+    forkable: doc.forkable === undefined ? true : Boolean(doc.forkable),
+    embedMode:
+      doc.embedMode === undefined
+        ? undefined
+        : EMBED_MODES.includes(doc.embedMode)
+          ? doc.embedMode
+          : 'snap-native',
+    dataSource: doc.dataSource ? doc.dataSource.map(clampDataSource) : undefined,
+  };
 }
 
 export function getPageIds(doc: SnapDoc): string[] {
