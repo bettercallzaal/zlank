@@ -154,6 +154,73 @@ function newBlock(type: BlockType, availablePageIds: string[] = []): Block {
           { label: 'Away', odds: '3.20' },
         ],
       };
+    case 'parlayBuilder':
+      return {
+        type: 'parlayBuilder',
+        title: 'Build your parlay',
+        candidates: [
+          { id: 'leg-1', label: 'Team A to win', odds: '2.10' },
+          { id: 'leg-2', label: 'Over 2.5 goals', odds: '1.80' },
+        ],
+        maxLegs: 4,
+      };
+    case 'agentChat':
+      return {
+        type: 'agentChat',
+        title: 'Ask the agent',
+        systemPrompt:
+          'You are a helpful assistant. Reply briefly and ask one curious follow-up.',
+        persona: 'concierge',
+        label: 'Send',
+        placeholder: 'Ask anything...',
+      };
+    case 'mintButton':
+      return {
+        type: 'mintButton',
+        label: 'Mint',
+        contractAddress: '0x0000000000000000000000000000000000000000',
+        chainId: 8453,
+      };
+    case 'subscribeButton':
+      return {
+        type: 'subscribeButton',
+        label: 'Subscribe',
+        subContractAddress: '0x0000000000000000000000000000000000000000',
+        chainId: 8453,
+        durationDays: 30,
+        priceCurrency: 'USDC',
+      };
+    case 'bountyEscrow':
+      return {
+        type: 'bountyEscrow',
+        title: 'New bounty',
+        description: 'Describe the task and the payout conditions.',
+        amountUsd: 100,
+      };
+    case 'marketEmbed':
+      return {
+        type: 'marketEmbed',
+        marketSlug: 'will-it-happen',
+        source: 'polymarket',
+        showOdds: true,
+        betButton: true,
+      };
+    case 'tokenDeploy':
+      return {
+        type: 'tokenDeploy',
+        name: 'My Token',
+        symbol: 'MYTOK',
+        description: 'A community token.',
+        clankerVersion: 'v4',
+      };
+    case 'coinPost':
+      return {
+        type: 'coinPost',
+        postId: '',
+        showHolders: true,
+        showPrice: true,
+        buyButton: true,
+      };
   }
 }
 

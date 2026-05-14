@@ -22,7 +22,15 @@ export type BlockType =
   | 'chatbot'
   | 'leaderboard'
   | 'liveScore'
-  | 'oddsTicker';
+  | 'oddsTicker'
+  | 'parlayBuilder'
+  | 'agentChat'
+  | 'mintButton'
+  | 'subscribeButton'
+  | 'bountyEscrow'
+  | 'marketEmbed'
+  | 'tokenDeploy'
+  | 'coinPost';
 
 // Subset of the 34 Snap icons - the most useful for blocks.
 export const ICONS = [
@@ -224,6 +232,117 @@ export interface OddsTickerBlock {
   bookmakerUrl?: string;
 }
 
+// Multi-leg parlay selector. Each candidate is a priced market the user can
+// toggle; selections submit to a bookmaker bet slip.
+export interface ParlayCandidate {
+  id: string;
+  label: string;
+  odds: string;
+  selected?: boolean;
+}
+
+export interface ParlayBuilderBlock {
+  type: 'parlayBuilder';
+  title: string;
+  candidates: ParlayCandidate[];
+  /** Max legs a user can combine. Clamped 1..8, default 4. */
+  maxLegs?: number;
+  /** HTTPS only. Selected legs submit here. */
+  bookmakerUrl?: string;
+}
+
+// Agentic chat block. Like chatbot but with a persona preset, a tool-use
+// whitelist, and partner-attributed billing. Tool dispatch + LLM wiring land
+// with the agent runtime; v1 carries the schema and renders the chat surface.
+export type AgentPersona = 'coach' | 'announcer' | 'analyst' | 'concierge';
+export type AgentTool = 'fetch-cast' | 'fetch-score' | 'open-market' | 'compose-cast';
+
+export interface AgentChatBlock {
+  type: 'agentChat';
+  title: string;
+  /** Frames the agent. Clamped to 1024 chars. */
+  systemPrompt: string;
+  persona?: AgentPersona;
+  tools?: AgentTool[];
+  /** Partner the agent's usage bills to. */
+  partnerId?: string;
+  placeholder?: string;
+  label?: string;
+}
+
+// One-tap NFT mint trigger. chainId selects the network; the click opens a
+// transaction in a Farcaster client.
+export interface MintButtonBlock {
+  type: 'mintButton';
+  label: string;
+  /** 0x-prefixed contract address. */
+  contractAddress: string;
+  chainId: number;
+  /** For ERC-1155 collections. */
+  tokenId?: string;
+  priceWei?: string;
+  partnerId?: 'highlight' | 'manifold' | 'sound' | 'zora';
+}
+
+// Onchain subscription trigger (Hypersub / Fabric STP).
+export interface SubscribeButtonBlock {
+  type: 'subscribeButton';
+  label: string;
+  /** 0x-prefixed STP contract address. */
+  subContractAddress: string;
+  chainId: number;
+  /** Subscription length. Clamped 1..3650. */
+  durationDays: number;
+  priceCurrency: 'USDC' | 'ETH';
+}
+
+// Bounty post with escrow (Bountycaster integration).
+export interface BountyEscrowBlock {
+  type: 'bountyEscrow';
+  title: string;
+  description: string;
+  /** USD amount. Clamped 0..100000. */
+  amountUsd: number;
+  /** Optional pre-assigned hunter FID. */
+  hunterFid?: number;
+  /** HTTPS only. */
+  bountycasterUrl?: string;
+}
+
+// Prediction-market embed (Polymarket / Kalshi / Manifold).
+export interface MarketEmbedBlock {
+  type: 'marketEmbed';
+  marketSlug: string;
+  source: 'polymarket' | 'kalshi' | 'manifold';
+  showOdds?: boolean;
+  showVolume?: boolean;
+  betButton?: boolean;
+}
+
+// One-click token deploy (Clanker).
+export interface TokenDeployBlock {
+  type: 'tokenDeploy';
+  name: string;
+  /** Uppercased, clamped to 8 chars. */
+  symbol: string;
+  description?: string;
+  /** HTTPS only. */
+  imageUrl?: string;
+  clankerVersion?: 'v3' | 'v4';
+}
+
+// Zora coin-a-post embed.
+export interface CoinPostBlock {
+  type: 'coinPost';
+  /** Zora coin id or cast hash. */
+  postId: string;
+  showHolders?: boolean;
+  showPrice?: boolean;
+  buyButton?: boolean;
+  /** HTTPS only. */
+  zoraUrl?: string;
+}
+
 type AnyBlock =
   | HeaderBlock
   | TextBlock
@@ -244,7 +363,15 @@ type AnyBlock =
   | ChatbotBlock
   | LeaderboardBlock
   | LiveScoreBlock
-  | OddsTickerBlock;
+  | OddsTickerBlock
+  | ParlayBuilderBlock
+  | AgentChatBlock
+  | MintButtonBlock
+  | SubscribeButtonBlock
+  | BountyEscrowBlock
+  | MarketEmbedBlock
+  | TokenDeployBlock
+  | CoinPostBlock;
 
 // Optional `gate` lets a block require a token-balance check before render.
 // Evaluated server-side on POST; falsy on GET (no FID), so gated blocks
@@ -533,6 +660,99 @@ export function clampBlock(block: Block): Block {
         dataSourceId: block.dataSourceId ? String(block.dataSourceId).slice(0, 64) : undefined,
         bookmaker: block.bookmaker?.slice(0, NAME_MAX),
         bookmakerUrl: isHttpsUrl(block.bookmakerUrl) ? block.bookmakerUrl : undefined,
+      };
+    case 'parlayBuilder':
+      return {
+        ...block,
+        title: block.title.slice(0, QUESTION_MAX),
+        candidates: block.candidates.slice(0, 8).map((c) => ({
+          id: String(c.id).slice(0, 64),
+          label: String(c.label).slice(0, OPTION_MAX),
+          odds: String(c.odds).slice(0, 20),
+          selected: c.selected === undefined ? undefined : Boolean(c.selected),
+        })),
+        maxLegs:
+          block.maxLegs === undefined
+            ? undefined
+            : Math.min(8, Math.max(1, Math.floor(Number(block.maxLegs) || 4))),
+        bookmakerUrl: isHttpsUrl(block.bookmakerUrl) ? block.bookmakerUrl : undefined,
+      };
+    case 'agentChat': {
+      const personas: AgentPersona[] = ['coach', 'announcer', 'analyst', 'concierge'];
+      const validTools: AgentTool[] = ['fetch-cast', 'fetch-score', 'open-market', 'compose-cast'];
+      return {
+        ...block,
+        title: block.title.slice(0, TITLE_MAX),
+        systemPrompt: block.systemPrompt.slice(0, 1024),
+        persona: block.persona && personas.includes(block.persona) ? block.persona : undefined,
+        tools: block.tools?.filter((t) => validTools.includes(t)),
+        partnerId: block.partnerId ? String(block.partnerId).slice(0, 32) : undefined,
+        placeholder: block.placeholder?.slice(0, 60),
+        label: block.label?.slice(0, LABEL_MAX),
+      };
+    }
+    case 'mintButton': {
+      const partners = ['highlight', 'manifold', 'sound', 'zora'] as const;
+      return {
+        ...block,
+        label: block.label.slice(0, LABEL_MAX),
+        contractAddress: String(block.contractAddress).slice(0, 64),
+        chainId: Math.max(0, Math.floor(Number(block.chainId) || 0)),
+        tokenId: block.tokenId ? String(block.tokenId).slice(0, 80) : undefined,
+        priceWei: block.priceWei ? String(block.priceWei).slice(0, 40) : undefined,
+        partnerId:
+          block.partnerId && partners.includes(block.partnerId) ? block.partnerId : undefined,
+      };
+    }
+    case 'subscribeButton':
+      return {
+        ...block,
+        label: block.label.slice(0, LABEL_MAX),
+        subContractAddress: String(block.subContractAddress).slice(0, 64),
+        chainId: Math.max(0, Math.floor(Number(block.chainId) || 0)),
+        durationDays: Math.min(3650, Math.max(1, Math.floor(Number(block.durationDays) || 30))),
+        priceCurrency: block.priceCurrency === 'ETH' ? 'ETH' : 'USDC',
+      };
+    case 'bountyEscrow':
+      return {
+        ...block,
+        title: block.title.slice(0, TITLE_MAX),
+        description: block.description.slice(0, TEXT_MAX),
+        amountUsd: Math.min(100000, Math.max(0, Number(block.amountUsd) || 0)),
+        hunterFid:
+          block.hunterFid === undefined
+            ? undefined
+            : Math.max(0, Math.floor(Number(block.hunterFid) || 0)),
+        bountycasterUrl: isHttpsUrl(block.bountycasterUrl) ? block.bountycasterUrl : undefined,
+      };
+    case 'marketEmbed': {
+      const sources = ['polymarket', 'kalshi', 'manifold'] as const;
+      return {
+        ...block,
+        marketSlug: String(block.marketSlug).slice(0, 120),
+        source: sources.includes(block.source) ? block.source : 'polymarket',
+        showOdds: block.showOdds === undefined ? undefined : Boolean(block.showOdds),
+        showVolume: block.showVolume === undefined ? undefined : Boolean(block.showVolume),
+        betButton: block.betButton === undefined ? undefined : Boolean(block.betButton),
+      };
+    }
+    case 'tokenDeploy':
+      return {
+        ...block,
+        name: block.name.slice(0, 32),
+        symbol: String(block.symbol).toUpperCase().slice(0, 8),
+        description: block.description?.slice(0, 160),
+        imageUrl: isHttpsUrl(block.imageUrl) ? block.imageUrl : undefined,
+        clankerVersion: block.clankerVersion === 'v3' ? 'v3' : block.clankerVersion === 'v4' ? 'v4' : undefined,
+      };
+    case 'coinPost':
+      return {
+        ...block,
+        postId: String(block.postId).slice(0, 80),
+        showHolders: block.showHolders === undefined ? undefined : Boolean(block.showHolders),
+        showPrice: block.showPrice === undefined ? undefined : Boolean(block.showPrice),
+        buyButton: block.buyButton === undefined ? undefined : Boolean(block.buyButton),
+        zoraUrl: isHttpsUrl(block.zoraUrl) ? block.zoraUrl : undefined,
       };
   }
 }

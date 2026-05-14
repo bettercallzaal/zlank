@@ -133,6 +133,49 @@ function blockToHtml(block: Block, data: ResolvedDataSources): string {
         .join('');
       return `<div class="block chart"><h3>${escapeHtml(block.market)}</h3>${legs}</div>`;
     }
+    case 'parlayBuilder': {
+      const rows = block.candidates
+        .map(
+          (c) =>
+            `<div class="bar-row"><span class="bar-label">${escapeHtml(c.label)}</span><strong>${escapeHtml(c.odds)}</strong></div>`,
+        )
+        .join('');
+      const href = safeHref(block.bookmakerUrl);
+      const action = href
+        ? `<a class="block btn primary" href="${href}" target="_blank" rel="noopener noreferrer">Open bet slip</a>`
+        : '<span class="hint">Open in Farcaster to build your parlay</span>';
+      return `<div class="block chart"><h3>${escapeHtml(block.title)}</h3>${rows}${action}</div>`;
+    }
+    case 'agentChat':
+      return `<div class="block interactive"><p>${escapeHtml(block.title)}</p><span class="hint">Open in Farcaster to chat with the agent</span></div>`;
+    case 'mintButton':
+      return `<div class="block interactive"><p>${escapeHtml(block.label)}</p><span class="hint">Mint on chain ${escapeHtml(String(block.chainId))} - open in Farcaster</span></div>`;
+    case 'subscribeButton':
+      return `<div class="block interactive"><p>${escapeHtml(block.label)}</p><span class="hint">${escapeHtml(String(block.durationDays))}d subscription in ${escapeHtml(block.priceCurrency)} - open in Farcaster</span></div>`;
+    case 'bountyEscrow': {
+      const href = safeHref(block.bountycasterUrl);
+      const cta = href
+        ? `<a class="block btn primary" href="${href}" target="_blank" rel="noopener noreferrer">View bounty</a>`
+        : '';
+      return `<div class="block chart"><h3>${escapeHtml(block.title)} - $${escapeHtml(String(block.amountUsd))}</h3><p class="sub">${escapeHtml(block.description)}</p>${cta}</div>`;
+    }
+    case 'marketEmbed': {
+      const url =
+        block.source === 'polymarket'
+          ? `https://polymarket.com/event/${encodeURIComponent(block.marketSlug)}`
+          : block.source === 'kalshi'
+            ? `https://kalshi.com/markets/${encodeURIComponent(block.marketSlug)}`
+            : `https://manifold.markets/${encodeURIComponent(block.marketSlug)}`;
+      return `<a class="block btn primary" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${block.betButton ? 'Place a bet' : 'View market'}</a>`;
+    }
+    case 'tokenDeploy':
+      return `<div class="block chart"><h3>${escapeHtml(block.name)} ($${escapeHtml(block.symbol)})</h3><p class="sub">${escapeHtml(block.description ?? 'Deploy a token')}</p><a class="block btn primary" href="https://clanker.world/deploy" target="_blank" rel="noopener noreferrer">Deploy $${escapeHtml(block.symbol)}</a></div>`;
+    case 'coinPost': {
+      const href = safeHref(block.zoraUrl);
+      return href
+        ? `<a class="block btn primary" href="${href}" target="_blank" rel="noopener noreferrer">${block.buyButton ? 'Buy this post' : 'View on Zora'}</a>`
+        : `<div class="block interactive"><p>Coined post</p><span class="hint">${escapeHtml(block.postId)}</span></div>`;
+    }
     case 'poll':
     case 'toggle':
     case 'slider':

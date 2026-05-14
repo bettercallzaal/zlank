@@ -461,6 +461,146 @@ function blockToElements(
       });
       break;
     }
+    case 'parlayBuilder': {
+      const titleId = `${id}_title`;
+      const groupId = `${id}_group`;
+      const btnId = `${id}_btn`;
+      elements[titleId] = {
+        type: 'text',
+        props: { content: block.title, size: 'md', weight: 'bold' },
+      };
+      elements[groupId] = {
+        type: 'toggle_group',
+        props: {
+          name: `parlay_${idx}`,
+          options: block.candidates.map((c) => `${c.label}  ${c.odds}`),
+          orientation: 'vertical',
+          multiple: true,
+        },
+      };
+      elements[btnId] = block.bookmakerUrl
+        ? {
+            type: 'button',
+            props: { label: 'Open bet slip', variant: 'primary', icon: 'external-link' },
+            on: { press: { action: 'open_url', params: { target: block.bookmakerUrl } } },
+          }
+        : {
+            type: 'button',
+            props: { label: 'Submit parlay', variant: 'primary', icon: 'check' },
+            on: { press: { action: 'submit', params: { target: baseUrl } } },
+          };
+      ids.push(titleId, groupId, btnId);
+      break;
+    }
+    case 'agentChat': {
+      const titleId = `${id}_title`;
+      const inputId = `${id}_input`;
+      const btnId = `${id}_btn`;
+      elements[titleId] = {
+        type: 'item',
+        props: { title: block.title, description: block.persona ? `${block.persona} agent` : 'AI agent' },
+      };
+      elements[inputId] = {
+        type: 'input',
+        props: {
+          name: `chat_${idx}`,
+          type: 'text',
+          placeholder: block.placeholder ?? 'Ask the agent...',
+          maxLength: 240,
+        },
+      };
+      elements[btnId] = {
+        type: 'button',
+        props: { label: block.label || 'Send', variant: 'primary', icon: 'message-circle' },
+        on: { press: { action: 'submit', params: { target: baseUrl } } },
+      };
+      ids.push(titleId, inputId, btnId);
+      break;
+    }
+    case 'mintButton': {
+      elements[id] = {
+        type: 'item',
+        props: { title: block.label, description: `Mint on chain ${block.chainId}` },
+      };
+      ids.push(id);
+      break;
+    }
+    case 'subscribeButton': {
+      elements[id] = {
+        type: 'item',
+        props: {
+          title: block.label,
+          description: `${block.durationDays}d subscription - ${block.priceCurrency}`,
+        },
+      };
+      ids.push(id);
+      break;
+    }
+    case 'bountyEscrow': {
+      const itemId = `${id}_item`;
+      elements[itemId] = {
+        type: 'item',
+        props: { title: `${block.title} - $${block.amountUsd}`, description: block.description },
+      };
+      ids.push(itemId);
+      if (block.bountycasterUrl) {
+        const btnId = `${id}_btn`;
+        elements[btnId] = {
+          type: 'button',
+          props: { label: 'View bounty', variant: 'primary', icon: 'external-link' },
+          on: { press: { action: 'open_url', params: { target: block.bountycasterUrl } } },
+        };
+        ids.push(btnId);
+      }
+      break;
+    }
+    case 'marketEmbed': {
+      const marketUrl =
+        block.source === 'polymarket'
+          ? `https://polymarket.com/event/${encodeURIComponent(block.marketSlug)}`
+          : block.source === 'kalshi'
+            ? `https://kalshi.com/markets/${encodeURIComponent(block.marketSlug)}`
+            : `https://manifold.markets/${encodeURIComponent(block.marketSlug)}`;
+      elements[id] = {
+        type: 'button',
+        props: {
+          label: block.betButton ? 'Place a bet' : 'View market',
+          variant: 'primary',
+          icon: 'trending-up',
+        },
+        on: { press: { action: 'open_url', params: { target: marketUrl } } },
+      };
+      ids.push(id);
+      break;
+    }
+    case 'tokenDeploy': {
+      const itemId = `${id}_item`;
+      const btnId = `${id}_btn`;
+      elements[itemId] = {
+        type: 'item',
+        props: { title: `${block.name} ($${block.symbol})`, description: block.description ?? 'Deploy a token' },
+      };
+      elements[btnId] = {
+        type: 'button',
+        props: { label: `Deploy $${block.symbol}`, variant: 'primary', icon: 'coins' },
+        on: { press: { action: 'open_url', params: { target: 'https://clanker.world/deploy' } } },
+      };
+      ids.push(itemId, btnId);
+      break;
+    }
+    case 'coinPost': {
+      if (block.zoraUrl) {
+        elements[id] = {
+          type: 'button',
+          props: { label: block.buyButton ? 'Buy this post' : 'View on Zora', variant: 'primary', icon: 'coins' },
+          on: { press: { action: 'open_url', params: { target: block.zoraUrl } } },
+        };
+      } else {
+        elements[id] = { type: 'item', props: { title: 'Coined post', description: block.postId } };
+      }
+      ids.push(id);
+      break;
+    }
   }
 
   return { ids, elements };

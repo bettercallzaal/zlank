@@ -150,6 +150,74 @@ function lintBlock(block: Block, idx: number, pageBlocks: Block[]): string[] {
       }
       break;
     }
+    case 'parlayBuilder': {
+      if (!block.title?.trim()) issues.push(`${here}: parlayBuilder title is empty`);
+      if (!Array.isArray(block.candidates) || block.candidates.length === 0) {
+        issues.push(`${here}: parlayBuilder needs at least 1 candidate`);
+      }
+      if (block.bookmakerUrl && !/^https:\/\//.test(block.bookmakerUrl)) {
+        issues.push(`${here}: parlayBuilder bookmakerUrl must start with https://`);
+      }
+      break;
+    }
+    case 'agentChat': {
+      if (!block.title?.trim()) issues.push(`${here}: agentChat title is empty`);
+      if (!block.systemPrompt?.trim()) issues.push(`${here}: agentChat systemPrompt is empty`);
+      break;
+    }
+    case 'mintButton': {
+      if (!block.label?.trim()) issues.push(`${here}: mintButton label is empty`);
+      if (!/^0x[a-fA-F0-9]{40}$/.test(block.contractAddress ?? '')) {
+        issues.push(`${here}: mintButton contractAddress must be a 0x address`);
+      }
+      if (!Number.isInteger(block.chainId) || block.chainId <= 0) {
+        issues.push(`${here}: mintButton chainId must be a positive integer`);
+      }
+      break;
+    }
+    case 'subscribeButton': {
+      if (!block.label?.trim()) issues.push(`${here}: subscribeButton label is empty`);
+      if (!/^0x[a-fA-F0-9]{40}$/.test(block.subContractAddress ?? '')) {
+        issues.push(`${here}: subscribeButton subContractAddress must be a 0x address`);
+      }
+      if (!Number.isInteger(block.chainId) || block.chainId <= 0) {
+        issues.push(`${here}: subscribeButton chainId must be a positive integer`);
+      }
+      if (!Number.isFinite(block.durationDays) || block.durationDays < 1) {
+        issues.push(`${here}: subscribeButton durationDays must be >= 1`);
+      }
+      break;
+    }
+    case 'bountyEscrow': {
+      if (!block.title?.trim()) issues.push(`${here}: bountyEscrow title is empty`);
+      if (!block.description?.trim()) issues.push(`${here}: bountyEscrow description is empty`);
+      if (!Number.isFinite(block.amountUsd) || block.amountUsd < 0) {
+        issues.push(`${here}: bountyEscrow amountUsd must be >= 0`);
+      }
+      if (block.bountycasterUrl && !/^https:\/\//.test(block.bountycasterUrl)) {
+        issues.push(`${here}: bountyEscrow bountycasterUrl must start with https://`);
+      }
+      break;
+    }
+    case 'marketEmbed': {
+      if (!block.marketSlug?.trim()) issues.push(`${here}: marketEmbed marketSlug is empty`);
+      break;
+    }
+    case 'tokenDeploy': {
+      if (!block.name?.trim()) issues.push(`${here}: tokenDeploy name is empty`);
+      if (!block.symbol?.trim()) issues.push(`${here}: tokenDeploy symbol is empty`);
+      if (block.imageUrl && !/^https:\/\//.test(block.imageUrl)) {
+        issues.push(`${here}: tokenDeploy imageUrl must start with https://`);
+      }
+      break;
+    }
+    case 'coinPost': {
+      if (!block.postId?.trim()) issues.push(`${here}: coinPost postId is empty`);
+      if (block.zoraUrl && !/^https:\/\//.test(block.zoraUrl)) {
+        issues.push(`${here}: coinPost zoraUrl must start with https://`);
+      }
+      break;
+    }
     case 'leaderboard': {
       if (!block.title?.trim()) issues.push(`${here}: leaderboard title is empty`);
       const pIdx = block.pollBlockIdx;
