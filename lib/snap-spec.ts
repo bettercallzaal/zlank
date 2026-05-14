@@ -1,11 +1,47 @@
 import type { SnapDoc, Block } from './blocks';
 import type { GateResult } from './gates';
+import type { ResolvedDataSources } from './live-data';
 
 interface Element {
   type: string;
   props?: Record<string, unknown>;
   children?: string[];
   on?: Record<string, unknown>;
+}
+
+const PLACEHOLDER_RE = /\$\{data\.([a-zA-Z0-9_-]+)\}/g;
+
+/**
+ * Substitute ${data.<sourceId>} tokens in a string with resolved data source
+ * values. Missing or null values resolve to empty string; object values are
+ * JSON-stringified. Strings without tokens pass through untouched.
+ */
+export function applyPlaceholders(str: string, data: ResolvedDataSources): string {
+  return str.replace(PLACEHOLDER_RE, (_match, key: string) => {
+    const value = data[key];
+    if (value === null || value === undefined) return '';
+    return typeof value === 'string' ? value : JSON.stringify(value);
+  });
+}
+
+/**
+ * Return a copy of a block with ${data.X} placeholders substituted in its
+ * display-text fields. Only header and text blocks carry free-text content;
+ * other block types are returned unchanged.
+ */
+function substituteBlock(block: Block, data: ResolvedDataSources): Block {
+  if (block.type === 'text') {
+    return { ...block, content: applyPlaceholders(block.content, data) };
+  }
+  if (block.type === 'header') {
+    return {
+      ...block,
+      title: applyPlaceholders(block.title, data),
+      subtitle: block.subtitle ? applyPlaceholders(block.subtitle, data) : block.subtitle,
+      badgeText: block.badgeText ? applyPlaceholders(block.badgeText, data) : block.badgeText,
+    };
+  }
+  return block;
 }
 
 /**
@@ -392,6 +428,9 @@ export interface DocToSnapOpts {
   gateResults?: Map<number, GateResult>;
   /** Per-block-index resolved leaderboard data (label, value pairs). */
   leaderboardData?: Map<number, Array<{ label: string; value: number }>>;
+  /** Resolved live data sources, keyed by DataSource.id. Substituted into
+   * ${data.X} placeholders in text and header blocks. */
+  resolvedData?: ResolvedDataSources;
 }
 
 export function docToSnap(
@@ -435,7 +474,10 @@ export function docToSnap(
     childIds.push(buyId, sepId);
   }
 
-  page.blocks.forEach((block, idx) => {
+  page.blocks.forEach((rawBlock, idx) => {
+    const block = opts.resolvedData
+      ? substituteBlock(rawBlock, opts.resolvedData)
+      : rawBlock;
     if (block.gate) {
       const result = opts.gateResults?.get(idx);
       const passed = result?.passed === true;

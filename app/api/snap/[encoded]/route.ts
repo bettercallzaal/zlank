@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { parseRequest } from '@farcaster/snap/server';
 import { resolveSnap } from '@/lib/resolve-snap';
 import { docToSnap } from '@/lib/snap-spec';
+import { resolveDataSources, type ResolvedDataSources } from '@/lib/live-data';
 import { recordVote, appendChatLog, bumpStat, getVotes, claimVote, claimChatTurn } from '@/lib/kv';
 import { evaluateGates, isGateRule, type GateResult } from '@/lib/gates';
 import { chat as llmChat } from '@/lib/llm';
@@ -121,11 +122,13 @@ function snapJsonResponse(
   pageId?: string,
   gateResults?: Map<number, GateResult>,
   leaderboardData?: Map<number, Array<{ label: string; value: number }>>,
+  resolvedData?: ResolvedDataSources,
 ): NextResponse {
   const snap = docToSnap(doc, `${origin}/api/snap/${encoded}`, {
     pageId,
     gateResults,
     leaderboardData,
+    resolvedData,
   });
   const linkHeader =
     `</api/snap/${encoded}>; rel="alternate"; type="${SNAP_MEDIA_TYPE}", ` +
@@ -216,11 +219,12 @@ export async function GET(
   const accept = req.headers.get('accept') ?? '';
   if (accept.includes(SNAP_MEDIA_TYPE) || accept.includes('vnd.farcaster.snap')) {
     bumpStat(encoded, 'views').catch((err) => console.error('bumpStat views', err));
-    const [gateResults, leaderboardData] = await Promise.all([
+    const [gateResults, leaderboardData, resolvedData] = await Promise.all([
       resolveGatesForPage(doc, pageId, undefined),
       resolveLeaderboardsForPage(doc, pageId, encoded),
+      resolveDataSources(doc.dataSource ?? []),
     ]);
-    return snapJsonResponse(doc, origin, encoded, pageId, gateResults, leaderboardData);
+    return snapJsonResponse(doc, origin, encoded, pageId, gateResults, leaderboardData, resolvedData);
   }
 
   return htmlResponse(doc, origin, encoded);
@@ -387,11 +391,12 @@ export async function POST(
   );
 
   // Bare submit (Unlock button etc) - re-render with gates + fresh leaderboards.
-  const [gateResults, leaderboardData] = await Promise.all([
+  const [gateResults, leaderboardData, resolvedData] = await Promise.all([
     resolveGatesForPage(doc, pageId, fid),
     resolveLeaderboardsForPage(doc, pageId, encoded),
+    resolveDataSources(doc.dataSource ?? []),
   ]);
-  return snapJsonResponse(doc, origin, encoded, pageId, gateResults, leaderboardData);
+  return snapJsonResponse(doc, origin, encoded, pageId, gateResults, leaderboardData, resolvedData);
 }
 
 function buildResultsDoc(
