@@ -233,8 +233,49 @@ export interface SnapCoin {
   symbol?: string;
 }
 
+/**
+ * Partner metadata for co-branded snaps. Includes attribution, logo, and landing page.
+ */
+export interface PartnerMeta {
+  /** Slug identifier, e.g. 'footy', 'clanker', 'polymarket'. */
+  id: string;
+  /** Display name, e.g. 'Footy App'. */
+  name: string;
+  /** Whether to show a "Powered by" badge in the snap render. */
+  attribution: boolean;
+  /** Partner landing page (HTTPS only). */
+  url?: string;
+  /** Partner logo URL (HTTPS only). */
+  logoUrl?: string;
+}
+
+/** Kind of data source for live bindings. */
+export type DataSourceKind = 'rest' | 'webhook' | 'snap' | 'static';
+
+/**
+ * Live data source binding referenced by blocks via dataSourceId.
+ * Used to hydrate dynamic block content (e.g., leaderboard scores, poll aggregates).
+ */
+export interface DataSource {
+  /** ID used by blocks to reference this source. */
+  id: string;
+  /** Kind of source (REST API, webhook, another snap, or static value). */
+  kind: DataSourceKind;
+  /** URL endpoint for rest/webhook (HTTPS only). */
+  url?: string;
+  /** Poll interval in seconds; later tasks will clamp to 10..3600. */
+  refreshSec?: number;
+  /** Snap ID to aggregate from (for kind=snap). */
+  snapId?: string;
+  /** Static value for kind=static (use unknown, not any). */
+  staticValue?: unknown;
+}
+
+/** Mode in which the snap is embedded or accessed. */
+export type EmbedMode = 'iframe' | 'mini-app' | 'snap-native';
+
 export interface SnapDoc {
-  version: 1;
+  version: 1 | 2;
   title: string;
   theme: ThemeAccent;
   pages: SnapPage[];
@@ -242,6 +283,16 @@ export interface SnapDoc {
   confetti?: boolean;
   /** Optional coin auto-injects a swap_token button on every page. */
   coin?: SnapCoin;
+  /** Parent snap ID for fork lineage tracking. */
+  parentId?: string;
+  /** Partner co-branding metadata. */
+  partner?: PartnerMeta;
+  /** Whether this snap is forkable by other users. */
+  forkable?: boolean;
+  /** Mode in which the snap is embedded (iframe, mini-app, or snap-native). */
+  embedMode?: EmbedMode;
+  /** Live data sources that blocks can reference. */
+  dataSource?: DataSource[];
 }
 
 export const DEFAULT_SNAP: SnapDoc = {
