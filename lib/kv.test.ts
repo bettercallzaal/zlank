@@ -16,7 +16,11 @@ import {
   getForkAncestors,
   recordPartnerSnap,
   listSnapsByPartner,
+  saveSnap,
+  loadSnapDoc,
+  loadSnap,
 } from './kv';
+import type { SnapDoc } from './blocks';
 
 describe('fork-tree KV indexes', () => {
   it('records and retrieves fork children', async () => {
@@ -62,5 +66,33 @@ describe('partner-scope KV index', () => {
   it('caps the result list at the requested limit', async () => {
     for (let i = 0; i < 10; i++) await recordPartnerSnap('big', `s-${i}`);
     expect(await listSnapsByPartner('big', 4)).toHaveLength(4);
+  });
+});
+
+describe('saveSnap / loadSnapDoc v2 round-trip', () => {
+  it('persists and loads a v2 doc with all v2 fields intact', async () => {
+    const doc: SnapDoc = {
+      version: 2,
+      title: 'V2 Snap',
+      theme: 'green',
+      partner: { id: 'footy', name: 'Footy App', attribution: true },
+      parentId: 'origin-snap',
+      forkable: false,
+      embedMode: 'iframe',
+      dataSource: [{ id: 'score', kind: 'rest', url: 'https://api.x.com/s', refreshSec: 30 }],
+      pages: [{ id: 'home', blocks: [{ type: 'text', content: 'hi' }] }],
+    };
+    const id = await saveSnap(doc);
+    const loadedDoc = await loadSnapDoc(id);
+    expect(loadedDoc?.version).toBe(2);
+    expect(loadedDoc?.partner?.id).toBe('footy');
+    expect(loadedDoc?.parentId).toBe('origin-snap');
+    expect(loadedDoc?.forkable).toBe(false);
+    expect(loadedDoc?.embedMode).toBe('iframe');
+    expect(loadedDoc?.dataSource?.[0].id).toBe('score');
+
+    const loadedRender = await loadSnap(id);
+    expect(loadedRender?.version).toBe(2);
+    expect(loadedRender?.partner?.id).toBe('footy');
   });
 });

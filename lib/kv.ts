@@ -61,29 +61,41 @@ export async function saveSnap(doc: SnapDoc): Promise<string> {
 function migrateLoadedDoc(raw: unknown): SnapDoc | null {
   if (!raw || typeof raw !== 'object') return null;
   const d = raw as Record<string, unknown>;
-  if (d.version !== 1 || typeof d.title !== 'string') return null;
+  if ((d.version !== 1 && d.version !== 2) || typeof d.title !== 'string') return null;
+  const version = d.version as SnapDoc['version'];
+
+  // v2 fields carry through verbatim; clamped at save time, not on load.
+  const v2 = {
+    parentId: d.parentId as string | undefined,
+    partner: d.partner as SnapDoc['partner'],
+    forkable: d.forkable as boolean | undefined,
+    embedMode: d.embedMode as SnapDoc['embedMode'],
+    dataSource: d.dataSource as SnapDoc['dataSource'],
+  };
 
   // Old single-page format: has blocks array on root
   if (Array.isArray(d.blocks)) {
     return {
-      version: 1,
+      version,
       title: d.title,
       theme: (d.theme as SnapDoc['theme']) ?? 'purple',
       pages: [{ id: 'home', blocks: d.blocks as SnapDoc['pages'][number]['blocks'] }],
       confetti: d.confetti as boolean | undefined,
       coin: d.coin as SnapDoc['coin'],
+      ...v2,
     };
   }
 
   // New multi-page format
   if (Array.isArray(d.pages)) {
     return {
-      version: 1,
+      version,
       title: d.title,
       theme: (d.theme as SnapDoc['theme']) ?? 'purple',
       pages: d.pages as SnapDoc['pages'],
       confetti: d.confetti as boolean | undefined,
       coin: d.coin as SnapDoc['coin'],
+      ...v2,
     };
   }
 
