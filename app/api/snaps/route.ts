@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isKvAvailable, saveSnap, claimSnapOwner } from '@/lib/kv';
+import { isKvAvailable, saveSnap, claimSnapOwner, recordFork, recordPartnerSnap } from '@/lib/kv';
 import { encodeSnap } from '@/lib/encode';
 import { validateDoc } from '@/lib/validate-snap';
 import { rateLimit, rateLimitResponse, ipOf } from '@/lib/rate-limit';
@@ -21,7 +21,11 @@ interface CreateBody {
 function isSnapDoc(input: unknown): input is SnapDoc {
   if (!input || typeof input !== 'object') return false;
   const d = input as Partial<SnapDoc>;
-  return d.version === 1 && Array.isArray(d.pages) && typeof d.title === 'string';
+  return (
+    (d.version === 1 || d.version === 2) &&
+    Array.isArray(d.pages) &&
+    typeof d.title === 'string'
+  );
 }
 
 export async function POST(req: NextRequest) {
@@ -74,6 +78,18 @@ export async function POST(req: NextRequest) {
     if (fid) {
       await claimSnapOwner(id, fid).catch((err) =>
         console.error('claimSnapOwner failed', id, err),
+      );
+    }
+    // Index fork lineage + partner attribution so the fork tree and partner
+    // dashboards are queryable. Failures here must not fail the save.
+    if (body.doc.parentId) {
+      await recordFork(body.doc.parentId, id).catch((err) =>
+        console.error('recordFork failed', id, err),
+      );
+    }
+    if (body.doc.partner?.id) {
+      await recordPartnerSnap(body.doc.partner.id, id).catch((err) =>
+        console.error('recordPartnerSnap failed', id, err),
       );
     }
     return NextResponse.json({ id, short: true, owner: fid ?? null });
