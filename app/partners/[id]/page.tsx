@@ -34,14 +34,6 @@ export default async function PartnerDashboard({
 
   return (
     <main className="min-h-screen bg-[#0a1628]">
-      <header className="border-b border-[#1f3252] px-6 py-4">
-        <div className="max-w-6xl mx-auto">
-          <Link href="/" className="text-[#f5a623] font-bold text-lg">
-            Zlank
-          </Link>
-        </div>
-      </header>
-
       <div className="max-w-6xl mx-auto px-6 py-12">
         <p className="text-sm uppercase tracking-wide text-[#b8c4d4] mb-1">Partner</p>
         <h1 className="text-4xl font-bold text-[#f5a623] mb-8">{partnerName}</h1>

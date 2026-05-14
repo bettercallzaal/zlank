@@ -9,14 +9,6 @@ export default function TemplatesPage() {
 
   return (
     <main className="min-h-screen bg-[#0a1628]">
-      <header className="border-b border-[#1f3252] px-6 py-4">
-        <div className="max-w-6xl mx-auto">
-          <Link href="/" className="text-[#f5a623] font-bold text-lg">
-            Zlank
-          </Link>
-        </div>
-      </header>
-
       <div className="max-w-6xl mx-auto px-6 py-12">
         <h1 className="text-4xl font-bold text-[#f5a623] mb-4">Templates Gallery</h1>
         <p className="text-[#b8c4d4] mb-12 max-w-2xl">

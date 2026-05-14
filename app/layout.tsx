@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import TopNav from './components/TopNav';
 
 const FC_MINIAPP_EMBED = JSON.stringify({
   version: '1',
@@ -46,6 +47,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="h-full antialiased">
       <body className="min-h-full bg-[#0a1628] text-[#e8eef7] flex flex-col">
+        <TopNav />
         {children}
       </body>
     </html>

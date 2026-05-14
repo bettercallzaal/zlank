@@ -41,20 +41,6 @@ export default function DashboardPage() {
 
   return (
     <main className="min-h-screen bg-[#0a1628]">
-      <header className="border-b border-[#1f3252] px-6 py-4">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <Link href="/" className="text-[#f5a623] font-bold text-lg">
-            Zlank
-          </Link>
-          <Link
-            href="/builder"
-            className="text-sm text-[#e8eef7] hover:text-[#f5a623] transition"
-          >
-            Back to builder
-          </Link>
-        </div>
-      </header>
-
       <div className="max-w-6xl mx-auto px-6 py-12">
         <div className="flex items-center justify-between mb-8">
           <div>

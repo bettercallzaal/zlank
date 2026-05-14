@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
 import { sdk } from '@farcaster/miniapp-sdk';
 import {
   DEFAULT_SNAP,
@@ -579,19 +578,7 @@ export default function Builder() {
   return (
     <main className="min-h-screen flex flex-col">
       <header className="border-b border-[#1f3252] px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href="/" className="text-[#f5a623] font-bold text-lg">
-            Zlank
-          </Link>
-          <nav className="hidden sm:flex gap-3 text-sm">
-            <Link href="/templates" className="text-[#b8c4d4] hover:text-[#f5a623] transition">
-              Templates
-            </Link>
-            <Link href="/dashboard" className="text-[#b8c4d4] hover:text-[#f5a623] transition">
-              My Snaps
-            </Link>
-          </nav>
-        </div>
+        <span className="text-sm font-medium text-[#b8c4d4]">Snap builder</span>
         <div className="flex items-center gap-3">
           {!deployed ? (
             <button

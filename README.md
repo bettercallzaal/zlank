@@ -96,6 +96,85 @@ vercel --prod       # ship
 
 After first deploy, click "Storage" in Vercel project → add Marketplace Redis (free tier 256MB, 10k commands/day) → connect to project. `REDIS_URL` injected automatically.
 
+## Testing
+
+Test set for the ad-canvas release (SnapDoc v2: partner templates, blocks, embed, live data, fork lineage). Replace `BASE` with your prod URL (e.g. `https://zlank.online`). An interactive version of this checklist can be generated locally via the `clipboard` skill.
+
+### 1. Regression - v1 must still work
+
+- [ ] Open `BASE/templates` - loads, no errors, original 11 community templates show under "Community Templates"
+- [ ] Open `BASE/builder?template=fan-vote` - loads the fan-vote template
+- [ ] Build any Snap, hit Deploy - still saves and returns a share link
+- [ ] Open an OLD shared Snap URL from before the v2 release - still renders (v1 regression check)
+
+### 2. Partner templates
+
+- [ ] `BASE/templates` shows a "Featured Partners" section above Community Templates
+- [ ] 9 partner rows: Footy App, Clanker, Zora, Hypersub, Polymarket, Bountycaster, Highlight, Defifa, Empire Builder - each card has a partner badge
+- [ ] Click "Use Template" on Footy App "Match Day" - builder opens with liveScore + oddsTicker + share + link blocks
+- [ ] Each partner card has a working "View partner dashboard" link
+
+### 3. Fork flow
+
+- [ ] Deploy any Snap, note its short id. Open `BASE/builder?fork=SHORT_ID` - builder loads a copy as a new draft
+- [ ] Save the fork - it gets its own new id, the original is untouched
+
+### 4. Embed on any webpage
+
+- [ ] Open `BASE/api/snap/SNAP_ID/embed` in a tab - renders a clean HTML card. View source: full HTML doc, no JavaScript
+- [ ] Drop that URL in an iframe on any test page - it renders (frame-ancestors *)
+- [ ] Interactive blocks (poll, chatbot) show prompt text + "Open in Farcaster to interact"
+- [ ] A partner Snap's embed shows a "Powered by [partner]" badge at the foot
+
+### 5. Partner dashboard + analytics
+
+- [ ] Open `BASE/partners/footy` - shows Views / Forks / Actions counters + a "Signature Templates" section
+- [ ] View a Footy partner Snap a few times, refresh the dashboard - Views ticks up
+- [ ] Fork a Footy partner Snap - Forks ticks up
+
+### 6. New blocks render
+
+- [ ] Footy "Match Day" deployed: liveScore shows "Home vs Away" (no feed yet), oddsTicker shows 3 legs
+- [ ] Clanker "Token Launch": tokenDeploy card + Deploy button
+- [ ] Polymarket "Prediction Market": marketEmbed renders a "Place a bet" button
+- [ ] Bountycaster "Bounty Board": bountyEscrow shows title + amount + View bounty
+- [ ] Highlight "Mint Drop": mintButton shows the label
+
+### 7. API endpoints
+
+- [ ] Search by partner - expect `{ partner, snaps, count }`
+  ```bash
+  curl 'BASE/api/snaps/search?partner=footy'
+  ```
+- [ ] Search with no partner - expect 400
+  ```bash
+  curl -i 'BASE/api/snaps/search'
+  ```
+- [ ] Partner stats - expect `{ partnerId, views, forks, actions }`
+  ```bash
+  curl 'BASE/api/partners/footy/stats'
+  ```
+- [ ] Action with no auth - expect 401
+  ```bash
+  curl -i -X POST 'BASE/api/snaps/SOME_ID/action' -H 'content-type: application/json' -d '{"action":"like"}'
+  ```
+- [ ] Embed headers - expect `text/html` + a `content-security-policy` header
+  ```bash
+  curl -i 'BASE/api/snap/SOME_ID/embed'
+  ```
+
+### Watch for
+
+- [ ] Any 500s in Vercel logs on the snap render path
+- [ ] Old Snap URLs failing to decode - that is a v1 regression, flag it immediately
+- [ ] Partner badge missing on a partner Snap
+
+### Known-not-done (do not file as bugs)
+
+- onchain settlement / delegated signing - the action endpoint returns 503 "unavailable" by design
+- builder cannot field-edit the 10 new partner blocks yet - they work via templates
+- Footy Match Day live feeds are placeholder URLs - liveScore shows "Home vs Away" and embeds may show raw `${data.x}` until real fc-footy endpoints are wired
+
 ## Roadmap
 
 **Done (v0)**
