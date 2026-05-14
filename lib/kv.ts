@@ -354,3 +354,69 @@ export async function getChatLog(
   }
   return out;
 }
+
+// Fork-tree + partner-scope indexes. A forked snap stores its parentId in the
+// SnapDoc; these indexes make the relationship queryable in both directions
+// (children of X, ancestors of Y) and let us list every snap tied to a partner.
+const FORK_CHILDREN_PREFIX = 'fork:children:';
+const FORK_PARENT_PREFIX = 'fork:parent:';
+const PARTNER_SNAPS_PREFIX = 'partner:snaps:';
+const PARTNER_OF_PREFIX = 'partner:of:';
+const FORK_ANCESTOR_MAX_DEPTH = 50;
+
+/** Record that childId was forked from parentId. */
+export async function recordFork(parentId: string, childId: string): Promise<void> {
+  const c = await getClient();
+  if (!c) return;
+  await c.sAdd(FORK_CHILDREN_PREFIX + parentId, childId);
+  await c.set(FORK_PARENT_PREFIX + childId, parentId);
+}
+
+/** Direct forks of a snap. */
+export async function getForkChildren(parentId: string): Promise<string[]> {
+  const c = await getClient();
+  if (!c) return [];
+  return c.sMembers(FORK_CHILDREN_PREFIX + parentId);
+}
+
+/** The snap a fork was derived from, or null if it is not a fork. */
+export async function getForkParent(childId: string): Promise<string | null> {
+  const c = await getClient();
+  if (!c) return null;
+  return c.get(FORK_PARENT_PREFIX + childId);
+}
+
+/**
+ * Walk the fork lineage from a snap up to its root. Oldest ancestor is last.
+ * Bounded by maxDepth so a malformed cyclic chain cannot loop forever.
+ */
+export async function getForkAncestors(
+  childId: string,
+  maxDepth = FORK_ANCESTOR_MAX_DEPTH,
+): Promise<string[]> {
+  const ancestors: string[] = [];
+  let current = childId;
+  for (let i = 0; i < maxDepth; i++) {
+    const parent = await getForkParent(current);
+    if (!parent) break;
+    ancestors.push(parent);
+    current = parent;
+  }
+  return ancestors;
+}
+
+/** Index a snap under its co-branding partner. */
+export async function recordPartnerSnap(partnerId: string, snapId: string): Promise<void> {
+  const c = await getClient();
+  if (!c) return;
+  await c.sAdd(PARTNER_SNAPS_PREFIX + partnerId, snapId);
+  await c.set(PARTNER_OF_PREFIX + snapId, partnerId);
+}
+
+/** Every snap indexed under a partner, capped at limit. */
+export async function listSnapsByPartner(partnerId: string, limit = 100): Promise<string[]> {
+  const c = await getClient();
+  if (!c) return [];
+  const all = await c.sMembers(PARTNER_SNAPS_PREFIX + partnerId);
+  return all.slice(0, limit);
+}
