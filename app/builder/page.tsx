@@ -157,10 +157,12 @@ export default function Builder() {
         // Browser context, no-op
       }
 
-      // Load from query params (id= for editing existing, template= for template)
+      // Load from query params: id= edits an existing snap, fork= clones a
+      // source snap as a new draft, template= seeds from a template.
       if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search);
         const snapId = params.get('id');
+        const forkId = params.get('fork');
         const templateId = params.get('template');
 
         if (snapId) {
@@ -191,6 +193,18 @@ export default function Builder() {
             // corrupt draft - fall through to server
           }
           if (!restored && serverDoc) setDoc(serverDoc);
+        } else if (forkId) {
+          // Fork an existing snap: the fork endpoint returns the source doc
+          // with parentId set, ready to save as a new snap.
+          try {
+            const res = await fetch(`/api/snaps/${forkId}/fork`, { method: 'POST' });
+            if (res.ok) {
+              const { doc: forkedDoc } = (await res.json()) as { doc: SnapDoc };
+              setDoc(forkedDoc);
+            }
+          } catch {
+            // ignore - fall back to the default doc
+          }
         } else if (templateId) {
           // Load template
           const template = getTemplateById(templateId);
