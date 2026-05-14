@@ -3,7 +3,7 @@ import { parseRequest } from '@farcaster/snap/server';
 import { resolveSnap } from '@/lib/resolve-snap';
 import { docToSnap } from '@/lib/snap-spec';
 import { resolveDataSources, type ResolvedDataSources } from '@/lib/live-data';
-import { recordVote, appendChatLog, bumpStat, getVotes, claimVote, claimChatTurn } from '@/lib/kv';
+import { recordVote, appendChatLog, bumpStat, getVotes, claimVote, claimChatTurn, incrementPartnerStat } from '@/lib/kv';
 import { evaluateGates, isGateRule, type GateResult } from '@/lib/gates';
 import { chat as llmChat } from '@/lib/llm';
 import type { SnapDoc, Block, ChartBar } from '@/lib/blocks';
@@ -219,6 +219,11 @@ export async function GET(
   const accept = req.headers.get('accept') ?? '';
   if (accept.includes(SNAP_MEDIA_TYPE) || accept.includes('vnd.farcaster.snap')) {
     bumpStat(encoded, 'views').catch((err) => console.error('bumpStat views', err));
+    if (doc.partner?.id) {
+      incrementPartnerStat(doc.partner.id, 'views').catch((err) =>
+        console.error('incrementPartnerStat views', err),
+      );
+    }
     const [gateResults, leaderboardData, resolvedData] = await Promise.all([
       resolveGatesForPage(doc, pageId, undefined),
       resolveLeaderboardsForPage(doc, pageId, encoded),

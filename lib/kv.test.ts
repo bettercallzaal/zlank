@@ -19,6 +19,8 @@ import {
   saveSnap,
   loadSnapDoc,
   loadSnap,
+  incrementPartnerStat,
+  getPartnerStats,
 } from './kv';
 import type { SnapDoc } from './blocks';
 
@@ -94,5 +96,29 @@ describe('saveSnap / loadSnapDoc v2 round-trip', () => {
     const loadedRender = await loadSnap(id);
     expect(loadedRender?.version).toBe(2);
     expect(loadedRender?.partner?.id).toBe('footy');
+  });
+});
+
+describe('partner-scoped stats', () => {
+  it('increments and reads views/forks/actions counters per partner', async () => {
+    await incrementPartnerStat('clanker', 'views');
+    await incrementPartnerStat('clanker', 'views');
+    await incrementPartnerStat('clanker', 'forks');
+    const stats = await getPartnerStats('clanker');
+    expect(stats.views).toBe(2);
+    expect(stats.forks).toBe(1);
+    expect(stats.actions).toBe(0);
+  });
+
+  it('returns zeroed stats for an unknown partner', async () => {
+    expect(await getPartnerStats('never-seen')).toEqual({ views: 0, forks: 0, actions: 0 });
+  });
+
+  it('keeps counters isolated between partners', async () => {
+    await incrementPartnerStat('zora', 'actions');
+    const zora = await getPartnerStats('zora');
+    const footy = await getPartnerStats('footy-stats-iso');
+    expect(zora.actions).toBe(1);
+    expect(footy.actions).toBe(0);
   });
 });

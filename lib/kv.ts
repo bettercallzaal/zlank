@@ -432,3 +432,37 @@ export async function listSnapsByPartner(partnerId: string, limit = 100): Promis
   const all = await c.sMembers(PARTNER_SNAPS_PREFIX + partnerId);
   return all.slice(0, limit);
 }
+
+const PARTNER_STAT_PREFIX = 'partner:stats:';
+export type PartnerStatMetric = 'views' | 'forks' | 'actions';
+export interface PartnerStats {
+  views: number;
+  forks: number;
+  actions: number;
+}
+
+/** Bump a partner-scoped counter (views, forks, or actions). */
+export async function incrementPartnerStat(
+  partnerId: string,
+  metric: PartnerStatMetric,
+): Promise<void> {
+  const c = await getClient();
+  if (!c) return;
+  await c.incr(`${PARTNER_STAT_PREFIX}${partnerId}:${metric}`);
+}
+
+/** Read the views/forks/actions counters for a partner. */
+export async function getPartnerStats(partnerId: string): Promise<PartnerStats> {
+  const c = await getClient();
+  if (!c) return { views: 0, forks: 0, actions: 0 };
+  const [views, forks, actions] = await Promise.all([
+    c.get(`${PARTNER_STAT_PREFIX}${partnerId}:views`),
+    c.get(`${PARTNER_STAT_PREFIX}${partnerId}:forks`),
+    c.get(`${PARTNER_STAT_PREFIX}${partnerId}:actions`),
+  ]);
+  return {
+    views: Number(views ?? 0),
+    forks: Number(forks ?? 0),
+    actions: Number(actions ?? 0),
+  };
+}

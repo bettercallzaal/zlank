@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { SnapDoc } from '@/lib/blocks';
 
-const { loadSnapDoc } = vi.hoisted(() => ({
+const { loadSnapDoc, incrementPartnerStat } = vi.hoisted(() => ({
   loadSnapDoc: vi.fn<(id: string) => Promise<SnapDoc | null>>(),
+  incrementPartnerStat: vi.fn(async () => {}),
 }));
 
-vi.mock('@/lib/kv', () => ({ loadSnapDoc }));
+vi.mock('@/lib/kv', () => ({ loadSnapDoc, incrementPartnerStat }));
 
 import { POST } from './route';
 

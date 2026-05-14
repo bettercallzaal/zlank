@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { loadSnapDoc } from '@/lib/kv';
+import { loadSnapDoc, incrementPartnerStat } from '@/lib/kv';
 import type { SnapDoc } from '@/lib/blocks';
 
 export const runtime = 'nodejs';
@@ -21,6 +21,12 @@ export async function POST(
   }
   if (source.forkable === false) {
     return NextResponse.json({ error: 'source snap is not forkable' }, { status: 403 });
+  }
+  // Count the fork against the source's partner. Failures must not fail the fork.
+  if (source.partner?.id) {
+    incrementPartnerStat(source.partner.id, 'forks').catch((err) =>
+      console.error('incrementPartnerStat forks', err),
+    );
   }
   const forked: SnapDoc = { ...source, parentId: id };
   return NextResponse.json({ doc: forked });
