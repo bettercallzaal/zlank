@@ -7,6 +7,7 @@ const NAV = [
   { href: '/builder', label: 'Builder' },
   { href: '/templates', label: 'Templates' },
   { href: '/dashboard', label: 'My Snaps' },
+  { href: '/suggest', label: 'Suggest' },
 ];
 
 // Global top banner. Rendered once in the root layout so every page shares the
