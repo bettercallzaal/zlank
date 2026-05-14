@@ -121,6 +121,18 @@ function blockToHtml(block: Block, data: ResolvedDataSources): string {
       const metaHtml = meta.length ? `<p class="sub">${meta.join(' - ')}</p>` : '';
       return `<div class="block hdr"><h2>${line}</h2>${metaHtml}</div>`;
     }
+    case 'oddsTicker': {
+      const href = safeHref(block.bookmakerUrl);
+      const legs = block.legs
+        .map((leg) => {
+          const inner = `${escapeHtml(leg.label)} <strong>${escapeHtml(leg.odds)}</strong>`;
+          return href
+            ? `<a class="block btn" href="${href}" target="_blank" rel="noopener noreferrer">${inner}</a>`
+            : `<div class="block interactive"><p>${inner}</p></div>`;
+        })
+        .join('');
+      return `<div class="block chart"><h3>${escapeHtml(block.market)}</h3>${legs}</div>`;
+    }
     case 'poll':
     case 'toggle':
     case 'slider':

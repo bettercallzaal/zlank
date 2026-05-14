@@ -140,6 +140,16 @@ function lintBlock(block: Block, idx: number, pageBlocks: Block[]): string[] {
       }
       break;
     }
+    case 'oddsTicker': {
+      if (!block.market?.trim()) issues.push(`${here}: oddsTicker market is empty`);
+      if (!Array.isArray(block.legs) || block.legs.length === 0) {
+        issues.push(`${here}: oddsTicker needs at least 1 leg`);
+      }
+      if (block.bookmakerUrl && !/^https:\/\//.test(block.bookmakerUrl)) {
+        issues.push(`${here}: oddsTicker bookmakerUrl must start with https://`);
+      }
+      break;
+    }
     case 'leaderboard': {
       if (!block.title?.trim()) issues.push(`${here}: leaderboard title is empty`);
       const pIdx = block.pollBlockIdx;

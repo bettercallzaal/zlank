@@ -438,6 +438,29 @@ function blockToElements(
       ids.push(id);
       break;
     }
+    case 'oddsTicker': {
+      const marketId = `${id}_market`;
+      elements[marketId] = {
+        type: 'text',
+        props: { content: block.market, size: 'md', weight: 'bold' },
+      };
+      ids.push(marketId);
+      block.legs.forEach((leg, legIdx) => {
+        const legId = `${id}_leg${legIdx}`;
+        const label = `${leg.label}  ${leg.odds}`;
+        if (block.bookmakerUrl) {
+          elements[legId] = {
+            type: 'button',
+            props: { label, variant: 'secondary' },
+            on: { press: { action: 'open_url', params: { target: block.bookmakerUrl } } },
+          };
+        } else {
+          elements[legId] = { type: 'text', props: { content: label, size: 'sm' } };
+        }
+        ids.push(legId);
+      });
+      break;
+    }
   }
 
   return { ids, elements };

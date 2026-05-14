@@ -21,7 +21,8 @@ export type BlockType =
   | 'feedback'
   | 'chatbot'
   | 'leaderboard'
-  | 'liveScore';
+  | 'liveScore'
+  | 'oddsTicker';
 
 // Subset of the 34 Snap icons - the most useful for blocks.
 export const ICONS = [
@@ -205,6 +206,24 @@ export interface LiveScoreBlock {
   showMinute?: boolean;
 }
 
+// Sportsbook odds ticker. Each leg is a labeled price; if bookmakerUrl is set
+// the legs deep-link to the book's bet slip. dataSourceId can carry live odds.
+export interface OddsLeg {
+  label: string;
+  odds: string;
+}
+
+export interface OddsTickerBlock {
+  type: 'oddsTicker';
+  market: string;
+  legs: OddsLeg[];
+  /** Optional DataSource id for live odds. */
+  dataSourceId?: string;
+  bookmaker?: string;
+  /** HTTPS only. Legs deep-link here when set. */
+  bookmakerUrl?: string;
+}
+
 type AnyBlock =
   | HeaderBlock
   | TextBlock
@@ -224,7 +243,8 @@ type AnyBlock =
   | FeedbackBlock
   | ChatbotBlock
   | LeaderboardBlock
-  | LiveScoreBlock;
+  | LiveScoreBlock
+  | OddsTickerBlock;
 
 // Optional `gate` lets a block require a token-balance check before render.
 // Evaluated server-side on POST; falsy on GET (no FID), so gated blocks
@@ -501,6 +521,18 @@ export function clampBlock(block: Block): Block {
         awayLogoUrl: isHttpsUrl(block.awayLogoUrl) ? block.awayLogoUrl : undefined,
         dataSourceId: String(block.dataSourceId).slice(0, 64),
         showMinute: block.showMinute === undefined ? undefined : Boolean(block.showMinute),
+      };
+    case 'oddsTicker':
+      return {
+        ...block,
+        market: block.market.slice(0, QUESTION_MAX),
+        legs: block.legs.slice(0, 6).map((leg) => ({
+          label: String(leg.label).slice(0, OPTION_MAX),
+          odds: String(leg.odds).slice(0, 20),
+        })),
+        dataSourceId: block.dataSourceId ? String(block.dataSourceId).slice(0, 64) : undefined,
+        bookmaker: block.bookmaker?.slice(0, NAME_MAX),
+        bookmakerUrl: isHttpsUrl(block.bookmakerUrl) ? block.bookmakerUrl : undefined,
       };
   }
 }

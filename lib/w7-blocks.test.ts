@@ -61,3 +61,44 @@ describe('liveScore block', () => {
     expect(html).toContain('A 3 - 0 B');
   });
 });
+
+describe('oddsTicker block', () => {
+  it('clamps legs to 6 and strips a non-HTTPS bookmakerUrl', () => {
+    const clamped = clampBlock({
+      type: 'oddsTicker',
+      market: 'M',
+      legs: Array.from({ length: 10 }, (_, i) => ({ label: `L${i}`, odds: '1.5' })),
+      bookmakerUrl: 'http://book.example',
+    });
+    if (clamped.type !== 'oddsTicker') throw new Error('wrong type');
+    expect(clamped.legs).toHaveLength(6);
+    expect(clamped.bookmakerUrl).toBeUndefined();
+  });
+
+  it('renders the market and legs in the Snap', () => {
+    const doc = snapWith({
+      type: 'oddsTicker',
+      market: 'Match Winner',
+      legs: [
+        { label: 'Home', odds: '2.10' },
+        { label: 'Away', odds: '3.20' },
+      ],
+      bookmakerUrl: 'https://book.example/slip',
+    });
+    const json = JSON.stringify(docToSnap(doc, 'https://zlank.online/api/snap/x'));
+    expect(json).toContain('Match Winner');
+    expect(json).toContain('Home  2.10');
+    expect(json).toContain('https://book.example/slip');
+  });
+
+  it('renders in the embed HTML', async () => {
+    const doc = snapWith({
+      type: 'oddsTicker',
+      market: 'Winner',
+      legs: [{ label: 'A', odds: '1.9' }],
+    });
+    const html = await docToEmbedHtml(doc);
+    expect(html).toContain('Winner');
+    expect(html).toContain('1.9');
+  });
+});

@@ -144,6 +144,16 @@ function newBlock(type: BlockType, availablePageIds: string[] = []): Block {
         dataSourceId: '',
         showMinute: true,
       };
+    case 'oddsTicker':
+      return {
+        type: 'oddsTicker',
+        market: 'Match Winner',
+        legs: [
+          { label: 'Home', odds: '2.10' },
+          { label: 'Draw', odds: '3.40' },
+          { label: 'Away', odds: '3.20' },
+        ],
+      };
   }
 }
 
