@@ -79,17 +79,70 @@ describe('docToEmbedHtml', () => {
     expect(html).toContain('Powered by Footy App');
   });
 
-  it('degrades interactive blocks to prompt text plus an open hint', async () => {
+  it('degrades client-only interactive blocks to prompt text plus an open hint', async () => {
     const doc: SnapDoc = {
       version: 2,
       title: 'x',
       theme: 'purple',
       pages: [
-        { id: 'home', blocks: [{ type: 'poll', question: 'Pick one', options: ['a', 'b'] }] },
+        { id: 'home', blocks: [{ type: 'toggle', label: 'Pick some', options: ['a', 'b'] }] },
       ],
     };
     const html = await docToEmbedHtml(doc);
-    expect(html).toContain('Pick one');
+    expect(html).toContain('Pick some');
     expect(html).toContain('Open in Farcaster');
+  });
+});
+
+describe('docToEmbedHtml - interactive poll', () => {
+  const pollDoc: SnapDoc = {
+    version: 2,
+    title: 'x',
+    theme: 'purple',
+    pages: [{ id: 'home', blocks: [{ type: 'poll', question: 'Best chain?', options: ['Base', 'OP'] }] }],
+  };
+
+  it('renders a poll as a POST form with radio options', async () => {
+    const html = await docToEmbedHtml(pollDoc, { encoded: 'snap123' });
+    expect(html).toContain('Best chain?');
+    expect(html).toContain('method="POST"');
+    expect(html).toContain('action="/api/snap/snap123/embed"');
+    expect(html).toContain('type="radio"');
+    expect(html).toContain('name="vote_0"');
+    expect(html).toContain('value="Base"');
+    expect(html).toContain('value="OP"');
+    expect(html).not.toContain('Open in Farcaster');
+  });
+
+  it('renders results with percentages when voteTallies are supplied', async () => {
+    const voteTallies = new Map([[0, { Base: 3, OP: 1 }]]);
+    const html = await docToEmbedHtml(pollDoc, { encoded: 'snap123', voteTallies });
+    expect(html).toContain('Best chain?');
+    expect(html).toContain('75%');
+    expect(html).toContain('25%');
+    expect(html).toContain('4 votes');
+    expect(html).not.toContain('type="radio"');
+  });
+
+  it('escapes poll option values in the form', async () => {
+    const xssDoc: SnapDoc = {
+      version: 2,
+      title: 'x',
+      theme: 'purple',
+      pages: [
+        {
+          id: 'home',
+          blocks: [{ type: 'poll', question: 'q', options: ['"><script>alert(1)</script>', 'ok'] }],
+        },
+      ],
+    };
+    const html = await docToEmbedHtml(xssDoc, { encoded: 's' });
+    expect(html).not.toContain('<script>alert(1)');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
+  it('carries ?page through into the form action for multi-page snaps', async () => {
+    const html = await docToEmbedHtml(pollDoc, { encoded: 'snap123', pageId: 'home' });
+    expect(html).toContain('action="/api/snap/snap123/embed?page=home"');
   });
 });

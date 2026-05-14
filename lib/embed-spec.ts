@@ -5,14 +5,50 @@ import { applyPlaceholders } from './snap-spec';
 import type { ResolvedDataSources } from './live-data';
 
 // Renders a SnapDoc to a self-contained, iframe-safe HTML document for embed
-// on any publisher webpage. This is a display + outbound-link surface only:
-// Snap-protocol actions (submit, compose_cast, swap_token) require a Farcaster
-// client, so interactive blocks degrade to their prompt text plus an
+// on any publisher webpage.
+//
+// poll blocks are interactive on the open web: they render as a plain HTML
+// <form> that POSTs back to the embed route, which records an anonymous vote
+// and returns the updated HTML with the tally. No JavaScript, no CSP change -
+// progressive enhancement. Other interactive blocks (toggle, chatbot, etc.)
+// still need a Farcaster client and degrade to prompt text plus an
 // "Open in Farcaster" affordance.
 //
 // SECURITY: every interpolated value is user-controlled SnapDoc content that
 // renders onto third-party pages. Escape everything. Never emit a raw URL
 // without an HTTPS check.
+
+export interface EmbedCtx {
+  /** Root-relative URL of the embed route, used as the poll form action. */
+  selfUrl: string;
+  /** blockIdx -> vote tallies. When a poll's tallies are present, it renders
+   *  results instead of the voting form. */
+  voteTallies?: Map<number, Record<string, number>>;
+}
+
+function pollFormHtml(question: string, options: string[], idx: number, ctx: EmbedCtx): string {
+  const opts = options
+    .map(
+      (opt, i) =>
+        `<label class="poll-opt"><input type="radio" name="vote_${idx}" value="${escapeHtml(opt)}"${i === 0 ? ' required' : ''} /> <span>${escapeHtml(opt)}</span></label>`,
+    )
+    .join('');
+  const action = ctx.selfUrl ? ` action="${escapeHtml(ctx.selfUrl)}"` : '';
+  return `<form class="block poll" method="POST"${action}><h3>${question}</h3>${opts}<button type="submit" class="btn primary">Vote</button></form>`;
+}
+
+function pollResultsHtml(question: string, options: string[], tallies: Record<string, number>): string {
+  const total = Object.values(tallies).reduce((a, b) => a + b, 0) || 1;
+  const rows = options
+    .map((opt) => {
+      const count = tallies[opt] ?? 0;
+      const pct = Math.round((count / total) * 100);
+      return `<div class="bar-row"><span class="bar-label">${escapeHtml(opt)}</span><span class="bar-track"><span class="bar-fill" style="width:${pct}%"></span></span><span class="bar-pct">${pct}%</span></div>`;
+    })
+    .join('');
+  const realTotal = Object.values(tallies).reduce((a, b) => a + b, 0);
+  return `<div class="block chart"><h3>${question}</h3>${rows}<p class="hint">${realTotal} vote${realTotal === 1 ? '' : 's'}</p></div>`;
+}
 
 const THEME_ACCENT: Record<ThemeAccent, string> = {
   purple: '#a855f7',
@@ -43,7 +79,12 @@ function sub(value: string, data: ResolvedDataSources): string {
   return escapeHtml(applyPlaceholders(value, data));
 }
 
-function blockToHtml(block: Block, data: ResolvedDataSources): string {
+function blockToHtml(
+  block: Block,
+  idx: number,
+  data: ResolvedDataSources,
+  ctx: EmbedCtx,
+): string {
   switch (block.type) {
     case 'header': {
       const badge = block.badgeText
@@ -176,23 +217,30 @@ function blockToHtml(block: Block, data: ResolvedDataSources): string {
         ? `<a class="block btn primary" href="${href}" target="_blank" rel="noopener noreferrer">${block.buyButton ? 'Buy this post' : 'View on Zora'}</a>`
         : `<div class="block interactive"><p>Coined post</p><span class="hint">${escapeHtml(block.postId)}</span></div>`;
     }
-    case 'poll':
+    case 'poll': {
+      // Interactive on the open web: render the voting form, or the results
+      // when this block's tallies have been resolved (after a POST).
+      const question = sub(block.question, data);
+      const tallies = ctx.voteTallies?.get(idx);
+      if (tallies && Object.keys(tallies).length > 0) {
+        return pollResultsHtml(question, block.options, tallies);
+      }
+      return pollFormHtml(question, block.options, idx, ctx);
+    }
     case 'toggle':
     case 'slider':
     case 'switch':
     case 'feedback':
     case 'chatbot':
     case 'navigate': {
-      // Interactive blocks need a Farcaster client. Show the prompt text and
-      // an open affordance rather than a dead control.
+      // These still need a Farcaster client. Show the prompt text and an open
+      // affordance rather than a dead control.
       const promptText =
-        block.type === 'poll'
-          ? block.question
-          : block.type === 'chatbot'
-            ? block.title
-            : block.type === 'feedback'
-              ? block.prompt
-              : block.label;
+        block.type === 'chatbot'
+          ? block.title
+          : block.type === 'feedback'
+            ? block.prompt
+            : block.label;
       return `<div class="block interactive"><p>${sub(promptText, data)}</p><span class="hint">Open in Farcaster to interact</span></div>`;
     }
     default:
@@ -203,11 +251,17 @@ function blockToHtml(block: Block, data: ResolvedDataSources): string {
 export interface DocToEmbedHtmlOpts {
   /** Page to render. Defaults to the first page. */
   pageId?: string;
+  /** Snap identifier (short id or encoded payload). Used to build the poll
+   *  form action so votes POST back to the right embed route. */
+  encoded?: string;
+  /** blockIdx -> vote tallies. Polls with tallies render results, not the form. */
+  voteTallies?: Map<number, Record<string, number>>;
 }
 
 /**
  * Render a SnapDoc to a complete, iframe-safe HTML document. Resolves the
- * doc's live data sources and substitutes ${data.X} placeholders.
+ * doc's live data sources and substitutes ${data.X} placeholders. poll blocks
+ * render as interactive forms (or results when voteTallies are supplied).
  */
 export async function docToEmbedHtml(
   doc: SnapDoc,
@@ -215,7 +269,13 @@ export async function docToEmbedHtml(
 ): Promise<string> {
   const data = doc.dataSource ? await resolveDataSources(doc.dataSource) : {};
   const page = doc.pages.find((p) => p.id === opts.pageId) ?? doc.pages[0];
-  const blocksHtml = page ? page.blocks.map((b) => blockToHtml(b, data)).join('\n') : '';
+  const selfUrl = opts.encoded
+    ? `/api/snap/${encodeURIComponent(opts.encoded)}/embed${opts.pageId ? `?page=${encodeURIComponent(opts.pageId)}` : ''}`
+    : '';
+  const ctx: EmbedCtx = { selfUrl, voteTallies: opts.voteTallies };
+  const blocksHtml = page
+    ? page.blocks.map((b, idx) => blockToHtml(b, idx, data, ctx)).join('\n')
+    : '';
   const accent = THEME_ACCENT[doc.theme] ?? THEME_ACCENT.purple;
   const partnerBadge = doc.partner?.attribution
     ? `<div class="partner">Powered by ${escapeHtml(doc.partner.name)}</div>`
@@ -251,6 +311,12 @@ hr { border: none; border-top: 1px solid #2a3754; }
 .interactive p { margin: 0 0 4px; }
 .hint { font-size: 0.75rem; color: #8b97a8; }
 .partner { margin-top: 8px; text-align: center; font-size: 0.75rem; color: #8b97a8; }
+.poll { padding: 14px; border: 1px solid #2a3754; border-radius: 10px; display: flex; flex-direction: column; gap: 8px; }
+.poll h3 { margin: 0 0 2px; font-size: 0.95rem; }
+.poll-opt { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #1c2740; border-radius: 8px; cursor: pointer; font-size: 0.9rem; }
+.poll-opt input { accent-color: var(--accent); }
+.poll button { margin-top: 4px; border: none; cursor: pointer; font-size: 0.9rem; }
+.bar-pct { font-size: 0.75rem; color: #b8c4d4; min-width: 32px; text-align: right; }
 </style>
 </head>
 <body>
