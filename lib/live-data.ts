@@ -1,9 +1,10 @@
 import type { DataSource } from './blocks';
-import { isHttpsUrl } from './blocks';
+import { isPublicHttpsUrl } from './url-guard';
 
 // Resolves a SnapDoc's dataSource bindings to concrete values at render time.
 // Every failure mode (bad URL, network error, non-ok response, oversized body)
 // degrades to null rather than throwing, so a broken feed never breaks a Snap.
+// URLs are SSRF-guarded: only public HTTPS hosts are fetched (see url-guard).
 
 const FETCH_TIMEOUT_MS = 5000;
 const MAX_RESPONSE_BYTES = 64_000;
@@ -32,7 +33,7 @@ function cacheKey(ds: DataSource): string {
 }
 
 async function fetchSource(url: string): Promise<DataSourceValue> {
-  if (!isHttpsUrl(url)) return null;
+  if (!(await isPublicHttpsUrl(url))) return null;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {

@@ -66,6 +66,10 @@ export async function POST(
   }
 
   // Parse the poll form: a single vote_<idx> field naming the chosen option.
+  // Only record when blockIdx points at a real poll block on the rendered page
+  // AND the option is one that poll actually offers - otherwise an open POST
+  // could poison tallies for arbitrary indices or write arbitrary options.
+  const page = doc.pages.find((p) => p.id === requestedPage) ?? doc.pages[0];
   const voteTallies = new Map<number, Record<string, number>>();
   try {
     const form = await req.formData();
@@ -73,7 +77,10 @@ export async function POST(
       if (!key.startsWith('vote_')) continue;
       const blockIdx = Number(key.slice('vote_'.length));
       const option = String(value).trim();
-      if (Number.isInteger(blockIdx) && blockIdx >= 0 && option) {
+      const block = Number.isInteger(blockIdx) && blockIdx >= 0
+        ? page?.blocks[blockIdx]
+        : undefined;
+      if (block?.type === 'poll' && option && block.options.includes(option)) {
         const tallies = await recordVote(encoded, blockIdx, option);
         voteTallies.set(blockIdx, tallies);
       }

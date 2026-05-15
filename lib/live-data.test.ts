@@ -1,4 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// SSRF guard is covered in url-guard.test.ts. Here we let any https URL
+// through and verify the fetch + cache + decoding logic in resolveDataSources.
+vi.mock('./url-guard', () => ({
+  isPublicHttpsUrl: async (url: string | undefined) =>
+    typeof url === 'string' && url.startsWith('https://'),
+}));
+
 import { resolveDataSources, __clearDataSourceCache } from './live-data';
 
 beforeEach(() => {
