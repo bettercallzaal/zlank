@@ -41,9 +41,20 @@ describe('validateDoc v2 field checks', () => {
   });
 
   it('rejects a non-HTTPS partner url', () => {
-    const r = validateDoc(v2({ partner: { id: 'p', name: 'P', attribution: true, url: 'http://x.com' } }));
+    const r = validateDoc(v2({ partner: { id: 'footy', name: 'Footy', attribution: true, url: 'http://x.com' } }));
     expect(r.ok).toBe(false);
     expect(r.errors.some((e) => e.includes('partner.url'))).toBe(true);
+  });
+
+  it('rejects an unknown partner.id (allowlist)', () => {
+    const r = validateDoc(v2({ partner: { id: 'fake-partner-xyz', name: 'Fake', attribution: true } }));
+    expect(r.ok).toBe(false);
+    expect(r.errors.some((e) => e.includes('not a known partner'))).toBe(true);
+  });
+
+  it('accepts the internal zlank-feedback partner (for /suggest)', () => {
+    const r = validateDoc(v2({ partner: { id: 'zlank-feedback', name: 'zlank feedback', attribution: false } }));
+    expect(r.ok).toBe(true);
   });
 
   it('rejects an invalid embedMode', () => {

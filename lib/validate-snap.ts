@@ -3,6 +3,7 @@ import { snapJsonRenderCatalog } from '@farcaster/snap/ui';
 import { docToSnap } from './snap-spec';
 import type { SnapDoc, Block } from './blocks';
 import { isHttpsUrl } from './blocks';
+import { isKnownPartnerId } from './templates';
 
 const VALID_EMBED_MODES = ['iframe', 'mini-app', 'snap-native'];
 const REFRESH_SEC_MIN = 10;
@@ -22,6 +23,11 @@ function lintV2Fields(doc: SnapDoc): string[] {
     }
     if (doc.partner.logoUrl && !isHttpsUrl(doc.partner.logoUrl)) {
       issues.push('partner.logoUrl must be HTTPS');
+    }
+    // partner.id is user-set; without an allowlist anyone could claim
+    // attribution and poison the partner index. Reject unknown ids.
+    if (doc.partner.id?.trim() && !isKnownPartnerId(doc.partner.id)) {
+      issues.push(`partner.id "${doc.partner.id}" is not a known partner`);
     }
   }
 

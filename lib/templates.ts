@@ -799,3 +799,17 @@ export function listTemplatePartners(): Array<{ id: string; name: string }> {
   }
   return [...seen].map(([id, name]) => ({ id, name }));
 }
+
+// Allowlist for partner.id on saved SnapDocs. partner.id is user-set, so without
+// this anyone could claim attribution and poison the partner index. Composed of
+// every partner that ships at least one template plus internal-only buckets.
+const INTERNAL_PARTNER_IDS = ['zlank-feedback'] as const;
+
+export const KNOWN_PARTNER_IDS: ReadonlySet<string> = new Set<string>([
+  ...TEMPLATES.flatMap((t) => (t.partner ? [t.partner.id] : [])),
+  ...INTERNAL_PARTNER_IDS,
+]);
+
+export function isKnownPartnerId(id: string | undefined): boolean {
+  return typeof id === 'string' && KNOWN_PARTNER_IDS.has(id);
+}
