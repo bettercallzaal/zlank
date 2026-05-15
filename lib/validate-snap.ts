@@ -127,6 +127,12 @@ function lintBlock(block: Block, idx: number, pageBlocks: Block[]): string[] {
         issues.push(`${here}: slider min (${block.min}) must be <= max (${block.max})`);
       }
       break;
+    case 'switch':
+      if (!block.label?.trim()) issues.push(`${here}: switch label is empty`);
+      break;
+    case 'divider':
+      // No user content to lint.
+      break;
     case 'chart':
       if (!Array.isArray(block.bars) || block.bars.length === 0) {
         issues.push(`${here}: chart needs at least 1 bar`);

@@ -81,3 +81,22 @@ describe('validateDoc v2 field checks', () => {
     expect(r.ok).toBe(true);
   });
 });
+
+describe('lintBlock - switch + divider', () => {
+  it('rejects a switch block with an empty label', () => {
+    const r = validateDoc({
+      version: 1, title: 't', theme: 'purple',
+      pages: [{ id: 'home', blocks: [{ type: 'switch', label: '', defaultChecked: false }] }],
+    });
+    expect(r.ok).toBe(false);
+    expect(r.errors.some((e) => e.includes('switch label is empty'))).toBe(true);
+  });
+
+  it('accepts a divider block', () => {
+    const r = validateDoc({
+      version: 1, title: 't', theme: 'purple',
+      pages: [{ id: 'home', blocks: [{ type: 'divider' }] }],
+    });
+    expect(r.ok).toBe(true);
+  });
+});
