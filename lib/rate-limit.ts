@@ -70,8 +70,10 @@ export async function rateLimit(windows: RateLimitWindow[]): Promise<RateLimitRe
         };
       }
       if (count > worst.count) worst = { ok: true, count, retryAfter: 0 };
-    } catch {
-      // fail open per window
+    } catch (err) {
+      // Fail open per window - Redis flake should not lock everyone out.
+      // Log so a degraded backend is visible instead of silent.
+      console.error('rate-limit: window check failed, failing open', w.key, err);
     }
   }
   return worst;

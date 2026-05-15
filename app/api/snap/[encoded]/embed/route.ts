@@ -86,8 +86,9 @@ export async function POST(
       }
       break;
     }
-  } catch {
+  } catch (err) {
     // Malformed form body - fall through and re-render without a tally.
+    console.error('embed POST: form parse failed', err);
   }
 
   const html = await docToEmbedHtml(doc, { pageId: requestedPage, encoded, voteTallies });

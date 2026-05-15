@@ -467,18 +467,22 @@ export default function Builder() {
         body: JSON.stringify({ doc }),
       });
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as {
-          error?: string;
-          issues?: string[];
-        };
-        // Validation errors (400 w/ issues): surface them, do NOT silently
-        // fall back to URL-encode - that would hide an invalid Snap.
+        // Server returned an error status. Surface it directly - do NOT fall
+        // back to URL-encode, which would set `deployed` to a different ID
+        // shape and mislead the user into thinking the Snap saved to KV.
+        let data: { error?: string; issues?: string[] } = {};
+        try {
+          data = (await res.json()) as typeof data;
+        } catch (parseErr) {
+          console.error('deploy: failed to parse server error body', parseErr);
+        }
         if (res.status === 400 && Array.isArray(data.issues) && data.issues.length > 0) {
           setValidationIssues(data.issues);
           setDeployErr(`Snap won't render. Fix:\n- ${data.issues.join('\n- ')}`);
-          return;
+        } else {
+          setDeployErr(data.error ?? `Deploy failed: HTTP ${res.status}`);
         }
-        throw new Error(data.error ?? `HTTP ${res.status}`);
+        return;
       }
       const data = (await res.json()) as { id: string; short: boolean };
       setDeployed(data.id);
@@ -494,11 +498,13 @@ export default function Builder() {
         updatedAt: Date.now(),
       });
     } catch (err: unknown) {
-      // Network / server error - fall back to URL-encode locally
+      // Network failure (fetch rejected before getting a response). Fall back
+      // to URL-encode locally so the user still gets a shareable Snap.
+      console.error('deploy: network failure, falling back to URL-encode', err);
       try {
         const encoded = encodeSnap(doc);
         setDeployed(encoded);
-        setDeployErr(err instanceof Error ? err.message : 'Saved locally only');
+        setDeployErr(err instanceof Error ? `Saved locally only (${err.message})` : 'Saved locally only');
       } catch (fallbackErr: unknown) {
         setDeployErr(fallbackErr instanceof Error ? fallbackErr.message : 'Deploy failed');
       }

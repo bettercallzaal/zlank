@@ -19,7 +19,8 @@ export function getMySnaps(): MySnapEntry[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as MySnapEntry[];
     return Array.isArray(parsed) ? parsed : [];
-  } catch {
+  } catch (err) {
+    console.warn('my-snaps: localStorage read failed', err);
     return [];
   }
 }
@@ -36,8 +37,8 @@ export function saveMySnap(entry: MySnapEntry): void {
     }
     const trimmed = snaps.slice(0, MAX_SNAPS);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
-  } catch {
-    // silently fail
+  } catch (err) {
+    console.warn('my-snaps: localStorage write failed', err);
   }
 }
 
@@ -46,8 +47,8 @@ export function removeMySnap(id: string): void {
   try {
     const snaps = getMySnaps().filter((s) => s.id !== id);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(snaps));
-  } catch {
-    // silently fail
+  } catch (err) {
+    console.warn('my-snaps: localStorage write failed', err);
   }
 }
 
@@ -55,8 +56,8 @@ export function clearMySnaps(): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // silently fail
+  } catch (err) {
+    console.warn('my-snaps: localStorage write failed', err);
   }
 }
 

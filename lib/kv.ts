@@ -360,8 +360,8 @@ export async function getChatLog(
   for (const r of raw) {
     try {
       out.push(JSON.parse(r) as ChatLogEntry);
-    } catch {
-      // skip malformed
+    } catch (err) {
+      console.warn('getChatLog: skipping malformed entry', err);
     }
   }
   return out;
