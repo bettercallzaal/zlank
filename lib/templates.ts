@@ -780,6 +780,47 @@ export const TEMPLATES: TemplateMeta[] = [
       ],
     },
   },
+  {
+    id: 'zabalgames-signup',
+    name: 'ZABAL Games signup',
+    description: 'Pick your role in ZABAL Games Season 1 - Builder, Workshop Lead, Audience, or Mentor.',
+    partner: { id: 'zabalgames', name: 'ZABAL Games' },
+    category: 'community',
+    doc: {
+      version: 2,
+      title: 'ZABAL Games Season 1 - Are You In?',
+      theme: 'purple',
+      confetti: true,
+      partner: { id: 'zabalgames', name: 'ZABAL Games', attribution: true, url: 'https://zabalgames.com' },
+      pages: [
+        {
+          id: 'home',
+          blocks: [
+            {
+              type: 'header',
+              title: 'ZABAL Games Season 1',
+              subtitle: 'Farcaster vibe-coding challenge. June workshops, July build, August Finals. Pick your role.',
+              badgeText: 'SEASON 1',
+              badgeColor: 'purple',
+            },
+            {
+              type: 'poll',
+              question: 'What is your role?',
+              options: [
+                'Builder (July ship)',
+                'Workshop Lead (June teach)',
+                'Audience (RSVP)',
+                'Mentor (August embed)',
+              ],
+            },
+            { type: 'link', label: 'Open the full site', url: 'https://zabalgames.com', icon: 'external-link', variant: 'primary' },
+            { type: 'link', label: 'Sign up as workshop lead', url: 'https://zabalgames.com/lead', icon: 'arrow-right' },
+            { type: 'share', label: 'Share this Snap', text: 'ZABAL Games Season 1 - are you in?', icon: 'share' },
+          ],
+        },
+      ],
+    },
+  },
 ];
 
 export function getTemplateById(id: string): TemplateMeta | undefined {
