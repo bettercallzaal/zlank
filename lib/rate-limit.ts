@@ -47,11 +47,15 @@ export interface RateLimitResult {
 /**
  * Check + increment a sliding-window counter. Uses a Redis INCR + EXPIRE NX
  * pattern. Returns { ok: false, retryAfter } if any of the configured windows
- * is over the cap. Fails open if Redis is unreachable.
+ * is over the cap. Fails closed (denies request) if Redis is unreachable
+ * entirely, or if critical security windows cannot be checked.
  */
 export async function rateLimit(windows: RateLimitWindow[]): Promise<RateLimitResult> {
   const c = await getClient();
-  if (!c) return { ok: true, count: 0, retryAfter: 0 };
+  if (!c) {
+    // Redis unavailable: fail closed to prevent abuse in degraded state
+    return { ok: false, count: 0, retryAfter: 60, bucket: 'backend-unavailable' };
+  }
 
   let worst: RateLimitResult = { ok: true, count: 0, retryAfter: 0 };
   for (const w of windows) {
@@ -71,9 +75,15 @@ export async function rateLimit(windows: RateLimitWindow[]): Promise<RateLimitRe
       }
       if (count > worst.count) worst = { ok: true, count, retryAfter: 0 };
     } catch (err) {
-      // Fail open per window - Redis flake should not lock everyone out.
+      // On per-window error: fail closed instead of open (deny this request).
       // Log so a degraded backend is visible instead of silent.
-      console.error('rate-limit: window check failed, failing open', w.key, err);
+      console.error('rate-limit: window check failed, failing closed', w.key, err);
+      return {
+        ok: false,
+        count: 0,
+        retryAfter: 60,
+        bucket: w.key + '-unavailable',
+      };
     }
   }
   return worst;

@@ -18,21 +18,29 @@ const UPLOAD_HOUR_MAX = Number(process.env.ZLANK_UPLOAD_HOUR_MAX ?? 60);
 const UPLOAD_PER_FID_DAY_MAX = Number(process.env.ZLANK_UPLOAD_FID_DAY_MAX ?? 50);
 
 export async function POST(req: NextRequest) {
-  const ip = ipOf(req);
+  // Require Quick Auth for upload access.
   const fid = await extractFid(req);
+  if (!fid) {
+    const header = req.headers.get('authorization') ?? '';
+    return NextResponse.json(
+      {
+        error: header ? 'Invalid or expired token' : 'Missing authorization token',
+      },
+      { status: 401 },
+    );
+  }
+
+  const ip = ipOf(req);
   const limits = [
     { key: `upload:burst:${ip}`, windowSec: 60, max: UPLOAD_BURST_MAX },
     { key: `upload:hour:${ip}`, windowSec: 60 * 60, max: UPLOAD_HOUR_MAX },
-  ];
-  if (fid) {
-    // Authenticated callers get a per-FID daily cap on top of the IP windows.
-    // Stops a single account from filling Blob via residential-proxy IP rotation.
-    limits.push({
+    // Per-FID daily cap stops a single account from filling Blob via IP rotation.
+    {
       key: `upload:fid:${fid}:day`,
       windowSec: 60 * 60 * 24,
       max: UPLOAD_PER_FID_DAY_MAX,
-    });
-  }
+    },
+  ];
   const rl = await rateLimit(limits);
   if (!rl.ok) return rateLimitResponse(rl);
 

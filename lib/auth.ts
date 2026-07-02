@@ -70,7 +70,8 @@ export async function authorizeOwner(snapId: string, req: Request): Promise<Auth
   const owner = await getSnapOwner(snapId);
   if (owner === null) {
     // Snap has no owner yet (legacy or just-created). First valid FID claims it.
-    await claimSnapOwner(snapId, fid);
+    const claimed = await claimSnapOwner(snapId, fid);
+    if (!claimed) return { ok: false, reason: 'not_owner', fid };
     return { ok: true, via: 'first-claim', fid };
   }
   if (owner === fid) return { ok: true, via: 'owner', fid };
