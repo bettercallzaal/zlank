@@ -1,0 +1,1867 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { sdk } from '@farcaster/miniapp-sdk';
+import {
+  DEFAULT_SNAP,
+  clampBlock,
+  ICONS,
+  type SnapDoc,
+  type Block,
+  type BlockType,
+  type IconName,
+} from '@/lib/blocks';
+import { encodeSnap } from '@/lib/encode';
+import { saveMySnap } from '@/lib/my-snaps';
+import { getTemplateById } from '@/lib/templates';
+
+const BLOCK_OPTIONS: { type: BlockType; label: string; icon: string }[] = [
+  { type: 'header', label: 'Header', icon: 'H' },
+  { type: 'text', label: 'Text', icon: 'T' },
+  { type: 'link', label: 'Link', icon: 'L' },
+  { type: 'navigate', label: 'Navigate', icon: 'N' },
+  { type: 'share', label: 'Share', icon: 'S' },
+  { type: 'image', label: 'Image', icon: 'I' },
+  { type: 'music', label: 'Music', icon: 'M' },
+  { type: 'artist', label: 'Artist', icon: 'A' },
+  { type: 'poll', label: 'Poll', icon: 'P' },
+  { type: 'chart', label: 'Bar chart', icon: 'C' },
+  { type: 'toggle', label: 'Toggle', icon: 'G' },
+  { type: 'progress', label: 'Progress', icon: '%' },
+  { type: 'slider', label: 'Slider', icon: '~' },
+  { type: 'switch', label: 'Switch', icon: 'O' },
+  { type: 'feedback', label: 'Feedback', icon: '@' },
+  { type: 'chatbot', label: 'Chatbot', icon: 'C' },
+  { type: 'leaderboard', label: 'Leaderboard', icon: 'L' },
+  { type: 'divider', label: 'Divider', icon: '-' },
+];
+
+// Pure helper - move blocks[from] to position `to`, preserving everything else.
+function newPages_reorderHelper<T>(arr: readonly T[], from: number, to: number): T[] {
+  if (from === to || from < 0 || from >= arr.length || to < 0 || to >= arr.length) {
+    return [...arr];
+  }
+  const next = [...arr];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
+function newBlock(type: BlockType, availablePageIds: string[] = []): Block {
+  switch (type) {
+    case 'header':
+      return { type: 'header', title: 'New header', subtitle: '' };
+    case 'text':
+      return { type: 'text', content: 'New text block. Edit me.' };
+    case 'link':
+      return {
+        type: 'link',
+        label: 'Open link',
+        url: 'https://farcaster.xyz',
+        icon: 'external-link',
+        variant: 'primary',
+      };
+    case 'navigate':
+      return {
+        type: 'navigate',
+        label: 'Go to page',
+        pageId: availablePageIds[1] || 'page-2',
+        icon: 'chevron-right',
+        variant: 'primary',
+      };
+    case 'share':
+      return { type: 'share', label: 'Share', text: 'Check out this Snap', icon: 'share' };
+    case 'image':
+      return {
+        type: 'image',
+        url: 'https://placehold.co/600x600/0a1628/f5a623.png',
+        alt: 'image',
+        aspect: '1:1',
+      };
+    case 'divider':
+      return { type: 'divider' };
+    case 'music':
+      return { type: 'music', url: 'https://open.spotify.com/track/', label: 'Listen', icon: 'play' };
+    case 'artist':
+      return { type: 'artist', fid: 19640, displayName: 'New artist', label: 'View profile' };
+    case 'poll':
+      return { type: 'poll', question: 'What should we do next?', options: ['Option A', 'Option B'] };
+    case 'chart':
+      return {
+        type: 'chart',
+        title: 'Top 3',
+        bars: [
+          { label: 'Alice', value: 12 },
+          { label: 'Bob', value: 8 },
+          { label: 'Carol', value: 4 },
+        ],
+      };
+    case 'toggle':
+      return {
+        type: 'toggle',
+        label: 'Pick one',
+        options: ['Yes', 'No', 'Maybe'],
+        orientation: 'horizontal',
+      };
+    case 'progress':
+      return { type: 'progress', label: 'Progress to goal', value: 65, max: 100 };
+    case 'slider':
+      return { type: 'slider', label: 'Rate it', min: 0, max: 10, defaultValue: 7 };
+    case 'switch':
+      return { type: 'switch', label: 'Subscribe to updates', defaultChecked: false };
+    case 'feedback':
+      return {
+        type: 'feedback',
+        label: 'Send feedback',
+        prompt: 'What should we add?',
+        mention: 'zaal',
+        prefix: 'feedback for zlank:',
+      };
+    case 'chatbot':
+      return {
+        type: 'chatbot',
+        title: 'What are you building?',
+        prompt: 'Share your idea. Reply comes back inline.',
+        systemPrompt:
+          'You are a friendly builder coach. Reply briefly (max 2 sentences) and ask one curious follow-up about what they are making.',
+        label: 'Send',
+        placeholder: 'Type here...',
+      };
+    case 'leaderboard':
+      return {
+        type: 'leaderboard',
+        title: 'Live results',
+        source: 'votes',
+        pollBlockIdx: 0,
+        topN: 5,
+      };
+    case 'liveScore':
+      return {
+        type: 'liveScore',
+        home: 'Home',
+        away: 'Away',
+        dataSourceId: '',
+        showMinute: true,
+      };
+    case 'oddsTicker':
+      return {
+        type: 'oddsTicker',
+        market: 'Match Winner',
+        legs: [
+          { label: 'Home', odds: '2.10' },
+          { label: 'Draw', odds: '3.40' },
+          { label: 'Away', odds: '3.20' },
+        ],
+      };
+    case 'parlayBuilder':
+      return {
+        type: 'parlayBuilder',
+        title: 'Build your parlay',
+        candidates: [
+          { id: 'leg-1', label: 'Team A to win', odds: '2.10' },
+          { id: 'leg-2', label: 'Over 2.5 goals', odds: '1.80' },
+        ],
+        maxLegs: 4,
+      };
+    case 'agentChat':
+      return {
+        type: 'agentChat',
+        title: 'Ask the agent',
+        systemPrompt:
+          'You are a helpful assistant. Reply briefly and ask one curious follow-up.',
+        persona: 'concierge',
+        label: 'Send',
+        placeholder: 'Ask anything...',
+      };
+    case 'mintButton':
+      return {
+        type: 'mintButton',
+        label: 'Mint',
+        contractAddress: '0x0000000000000000000000000000000000000000',
+        chainId: 8453,
+      };
+    case 'subscribeButton':
+      return {
+        type: 'subscribeButton',
+        label: 'Subscribe',
+        subContractAddress: '0x0000000000000000000000000000000000000000',
+        chainId: 8453,
+        durationDays: 30,
+        priceCurrency: 'USDC',
+      };
+    case 'bountyEscrow':
+      return {
+        type: 'bountyEscrow',
+        title: 'New bounty',
+        description: 'Describe the task and the payout conditions.',
+        amountUsd: 100,
+      };
+    case 'marketEmbed':
+      return {
+        type: 'marketEmbed',
+        marketSlug: 'will-it-happen',
+        source: 'polymarket',
+        showOdds: true,
+        betButton: true,
+      };
+    case 'tokenDeploy':
+      return {
+        type: 'tokenDeploy',
+        name: 'My Token',
+        symbol: 'MYTOK',
+        description: 'A community token.',
+        clankerVersion: 'v4',
+      };
+    case 'coinPost':
+      return {
+        type: 'coinPost',
+        postId: '',
+        showHolders: true,
+        showPrice: true,
+        buyButton: true,
+      };
+  }
+}
+
+export default function Builder() {
+  const [doc, setDoc] = useState<SnapDoc>(DEFAULT_SNAP);
+  const [deployed, setDeployed] = useState<string | null>(null);
+  const [isMiniApp, setIsMiniApp] = useState(false);
+  const [currentPageId, setCurrentPageId] = useState<string>('home');
+  const [pageCounter, setPageCounter] = useState(2);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const inMiniApp = await sdk.isInMiniApp();
+        setIsMiniApp(inMiniApp);
+        if (inMiniApp) await sdk.actions.ready();
+      } catch {
+        // Browser context, no-op
+      }
+
+      // Load from query params: id= edits an existing snap, fork= clones a
+      // source snap as a new draft, template= seeds from a template.
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const snapId = params.get('id');
+        const forkId = params.get('fork');
+        const templateId = params.get('template');
+
+        if (snapId) {
+          // Load existing snap for editing. Then check for an in-progress
+          // edit draft (autosave key zlank:draft:edit:{id}); if it's newer
+          // than the server doc and the user wants it back, prefer the draft.
+          // For now, load draft silently if present - the autosave window is
+          // 600ms so anything in localStorage is by definition "newest".
+          setEditingId(snapId);
+          let serverDoc: SnapDoc | null = null;
+          try {
+            const res = await fetch(`/api/snaps/${snapId}/doc`);
+            if (res.ok) serverDoc = (await res.json()) as SnapDoc;
+          } catch {
+            // ignore - we'll try draft below
+          }
+          let restored = false;
+          try {
+            const raw = window.localStorage.getItem(`zlank:draft:edit:${snapId}`);
+            if (raw) {
+              const parsed = JSON.parse(raw) as { doc?: SnapDoc; savedAt?: number };
+              if (parsed.doc?.version === 1) {
+                setDoc(parsed.doc);
+                restored = true;
+              }
+            }
+          } catch {
+            // corrupt draft - fall through to server
+          }
+          if (!restored && serverDoc) setDoc(serverDoc);
+        } else if (forkId) {
+          // Fork an existing snap: the fork endpoint returns the source doc
+          // with parentId set, ready to save as a new snap.
+          try {
+            const res = await fetch(`/api/snaps/${forkId}/fork`, { method: 'POST' });
+            if (res.ok) {
+              const { doc: forkedDoc } = (await res.json()) as { doc: SnapDoc };
+              setDoc(forkedDoc);
+            }
+          } catch {
+            // ignore - fall back to the default doc
+          }
+        } else if (templateId) {
+          // Load template
+          const template = getTemplateById(templateId);
+          if (template) {
+            setDoc(template.doc);
+          }
+        } else {
+          // No id, no template - try to restore an in-progress draft.
+          try {
+            const raw = window.localStorage.getItem('zlank:draft:new');
+            if (raw) {
+              const parsed = JSON.parse(raw) as { doc?: SnapDoc; savedAt?: number };
+              if (parsed.doc?.version === 1) setDoc(parsed.doc);
+            }
+          } catch {
+            // ignore corrupt draft
+          }
+        }
+      }
+    })();
+  }, []);
+
+  function updateBlock(idx: number, patch: Partial<Block>) {
+    setDoc((d) => {
+      const pageIdx = d.pages.findIndex((p) => p.id === currentPageId);
+      if (pageIdx === -1) return d;
+      const newPages = [...d.pages];
+      const nextBlocks = [...newPages[pageIdx].blocks];
+      nextBlocks[idx] = clampBlock({ ...nextBlocks[idx], ...patch } as Block);
+      newPages[pageIdx] = { ...newPages[pageIdx], blocks: nextBlocks };
+      return { ...d, pages: newPages };
+    });
+  }
+
+  function removeBlock(idx: number) {
+    setDoc((d) => {
+      const pageIdx = d.pages.findIndex((p) => p.id === currentPageId);
+      if (pageIdx === -1) return d;
+      const newPages = [...d.pages];
+      newPages[pageIdx] = {
+        ...newPages[pageIdx],
+        blocks: newPages[pageIdx].blocks.filter((_, i) => i !== idx),
+      };
+      return { ...d, pages: newPages };
+    });
+  }
+
+  function addBlock(type: BlockType) {
+    setDoc((d) => {
+      const pageIdx = d.pages.findIndex((p) => p.id === currentPageId);
+      if (pageIdx === -1) return d;
+      const newPages = [...d.pages];
+      const otherPageIds = d.pages.filter((p) => p.id !== currentPageId).map((p) => p.id);
+      newPages[pageIdx] = {
+        ...newPages[pageIdx],
+        blocks: [...newPages[pageIdx].blocks, newBlock(type, otherPageIds)],
+      };
+      return { ...d, pages: newPages };
+    });
+  }
+
+  function moveBlock(idx: number, dir: -1 | 1) {
+    setDoc((d) => {
+      const pageIdx = d.pages.findIndex((p) => p.id === currentPageId);
+      if (pageIdx === -1) return d;
+      const newPages = [...d.pages];
+      const nextBlocks = [...newPages[pageIdx].blocks];
+      const target = idx + dir;
+      if (target < 0 || target >= nextBlocks.length) return d;
+      [nextBlocks[idx], nextBlocks[target]] = [nextBlocks[target], nextBlocks[idx]];
+      newPages[pageIdx] = { ...newPages[pageIdx], blocks: nextBlocks };
+      return { ...d, pages: newPages };
+    });
+  }
+
+  function reorderBlock(from: number, to: number) {
+    setDoc((d) => {
+      const pageIdx = d.pages.findIndex((p) => p.id === currentPageId);
+      if (pageIdx === -1) return d;
+      const blocks = newPages_reorderHelper(d.pages[pageIdx].blocks, from, to);
+      const newPages = [...d.pages];
+      newPages[pageIdx] = { ...newPages[pageIdx], blocks };
+      return { ...d, pages: newPages };
+    });
+  }
+
+  async function importFromSnap(otherSnapId: string) {
+    const id = otherSnapId.trim();
+    if (!id) return;
+    try {
+      const res = await fetch(`/api/snaps/${encodeURIComponent(id)}/doc`);
+      if (!res.ok) {
+        alert(`Snap not found: ${id}`);
+        return;
+      }
+      const other = (await res.json()) as SnapDoc;
+      const importedBlocks = other.pages[0]?.blocks ?? [];
+      if (importedBlocks.length === 0) {
+        alert('That snap has no blocks on page 1.');
+        return;
+      }
+      setDoc((d) => {
+        const pageIdx = d.pages.findIndex((p) => p.id === currentPageId);
+        if (pageIdx === -1) return d;
+        const newPages = [...d.pages];
+        newPages[pageIdx] = {
+          ...newPages[pageIdx],
+          blocks: [...newPages[pageIdx].blocks, ...importedBlocks],
+        };
+        return { ...d, pages: newPages };
+      });
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Import failed');
+    }
+  }
+
+  function addPage() {
+    const newPageId = `page-${pageCounter}`;
+    setPageCounter((c) => c + 1);
+    setDoc((d) => ({
+      ...d,
+      pages: [...d.pages, { id: newPageId, blocks: [] }],
+    }));
+    setCurrentPageId(newPageId);
+  }
+
+  function deletePage(pageId: string) {
+    if (doc.pages.length === 1) return;
+    const newPages = doc.pages.filter((p) => p.id !== pageId);
+    setDoc((d) => ({ ...d, pages: newPages }));
+    if (currentPageId === pageId) {
+      setCurrentPageId(newPages[0].id);
+    }
+  }
+
+  const currentPage = doc.pages.find((p) => p.id === currentPageId);
+
+  const [deploying, setDeploying] = useState(false);
+  const [deployErr, setDeployErr] = useState<string | null>(null);
+  const [validationIssues, setValidationIssues] = useState<string[]>([]);
+
+  function duplicateBlock(idx: number) {
+    setDoc((d) => {
+      const pageIdx = d.pages.findIndex((p) => p.id === currentPageId);
+      if (pageIdx === -1) return d;
+      const blocks = d.pages[pageIdx].blocks;
+      if (idx < 0 || idx >= blocks.length) return d;
+      const cloned: Block = JSON.parse(JSON.stringify(blocks[idx])) as Block;
+      const next = [...blocks.slice(0, idx + 1), cloned, ...blocks.slice(idx + 1)];
+      const newPages = [...d.pages];
+      newPages[pageIdx] = { ...newPages[pageIdx], blocks: next };
+      return { ...d, pages: newPages };
+    });
+  }
+
+  async function deploy() {
+    setDeploying(true);
+    setDeployErr(null);
+    setValidationIssues([]);
+    try {
+      // In Mini App context, attach a Quick Auth JWT so the server can record
+      // the creator's FID as the snap's owner. Browser-only callers skip the
+      // token; their snaps stay unowned until first authenticated /coin call.
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (isMiniApp) {
+        try {
+          const { token } = await sdk.quickAuth.getToken();
+          if (token) headers.authorization = `Bearer ${token}`;
+        } catch {
+          // continue without owner attribution if token fetch fails
+        }
+      }
+      const res = await fetch('/api/snaps', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ doc }),
+      });
+      if (!res.ok) {
+        // Server returned an error status. Surface it directly - do NOT fall
+        // back to URL-encode, which would set `deployed` to a different ID
+        // shape and mislead the user into thinking the Snap saved to KV.
+        let data: { error?: string; issues?: string[] } = {};
+        try {
+          data = (await res.json()) as typeof data;
+        } catch (parseErr) {
+          console.error('deploy: failed to parse server error body', parseErr);
+        }
+        if (res.status === 400 && Array.isArray(data.issues) && data.issues.length > 0) {
+          setValidationIssues(data.issues);
+          setDeployErr(`Snap won't render. Fix:\n- ${data.issues.join('\n- ')}`);
+        } else {
+          setDeployErr(data.error ?? `Deploy failed: HTTP ${res.status}`);
+        }
+        return;
+      }
+      const data = (await res.json()) as { id: string; short: boolean };
+      setDeployed(data.id);
+
+      // Save to localStorage for My Snaps history
+      const totalBlockCount = doc.pages.reduce((sum, page) => sum + page.blocks.length, 0);
+      saveMySnap({
+        id: data.id,
+        title: doc.title,
+        theme: doc.theme,
+        blockCount: totalBlockCount,
+        createdAt: editingId ? Date.now() : Date.now(),
+        updatedAt: Date.now(),
+      });
+    } catch (err: unknown) {
+      // Network failure (fetch rejected before getting a response). Fall back
+      // to URL-encode locally so the user still gets a shareable Snap.
+      console.error('deploy: network failure, falling back to URL-encode', err);
+      try {
+        const encoded = encodeSnap(doc);
+        setDeployed(encoded);
+        setDeployErr(err instanceof Error ? `Saved locally only (${err.message})` : 'Saved locally only');
+      } catch (fallbackErr: unknown) {
+        setDeployErr(fallbackErr instanceof Error ? fallbackErr.message : 'Deploy failed');
+      }
+    } finally {
+      setDeploying(false);
+    }
+  }
+
+  async function shareToFeed() {
+    if (!deployed) return;
+    const url = `${window.location.origin}/api/snap/${deployed}`;
+    if (isMiniApp) {
+      try {
+        await sdk.actions.composeCast({
+          text: doc.title,
+          embeds: [url],
+        });
+      } catch (err) {
+        console.error('compose_cast failed', err);
+      }
+    } else {
+      const composeUrl = `https://farcaster.xyz/~/compose?embeds[]=${encodeURIComponent(url)}`;
+      window.open(composeUrl, '_blank');
+    }
+  }
+
+  async function copyUrl() {
+    if (!deployed) return;
+    const url = `${window.location.origin}/api/snap/${deployed}`;
+    await navigator.clipboard.writeText(url);
+  }
+
+  // Auto-save draft of in-progress doc to localStorage whenever it changes
+  // (debounced). Restore on next mount unless ?id= or ?template= overrode it.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const t = setTimeout(() => {
+      try {
+        const key = editingId ? `zlank:draft:edit:${editingId}` : 'zlank:draft:new';
+        window.localStorage.setItem(key, JSON.stringify({ doc, savedAt: Date.now() }));
+      } catch {
+        // localStorage full / disabled - ignore
+      }
+    }, 600);
+    return () => clearTimeout(t);
+  }, [doc, editingId]);
+
+  // Cmd+S / Ctrl+S to deploy. Captured on the page (not on inputs) so the
+  // browser's "save page" dialog never wins.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const isSave = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's';
+      if (!isSave) return;
+      e.preventDefault();
+      if (!deploying) deploy();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deploying, doc, currentPageId, editingId]);
+
+  // Map "block N (type): message" issues to per-block index for highlighting.
+  const blockErrorMap: Map<number, string[]> = (() => {
+    const m = new Map<number, string[]>();
+    const re = /(?:page \S+: )?block (\d+)\b/;
+    for (const issue of validationIssues) {
+      const match = issue.match(re);
+      if (!match) continue;
+      const idx = Number(match[1]);
+      const list = m.get(idx) ?? [];
+      list.push(issue.replace(/^.*?block \d+ \([^)]+\): /, ''));
+      m.set(idx, list);
+    }
+    return m;
+  })();
+
+  return (
+    <main className="min-h-screen flex flex-col">
+      <header className="border-b border-[#1f3252] px-4 py-3 flex items-center justify-between">
+        <span className="text-sm font-medium text-[#b8c4d4]">Snap builder</span>
+        <div className="flex items-center gap-3">
+          {!deployed ? (
+            <button
+              onClick={deploy}
+              disabled={deploying}
+              title="Cmd+S / Ctrl+S"
+              className="bg-[#f5a623] text-[#0a1628] font-bold px-5 py-2 rounded-md hover:bg-[#ffc14d] transition disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+            >
+              {deploying && (
+                <span className="inline-block w-3 h-3 border-2 border-[#0a1628] border-t-transparent rounded-full animate-spin" aria-hidden />
+              )}
+              {deploying ? 'Deploying...' : 'Deploy'}
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={copyUrl}
+                className="border border-[#1f3252] text-[#e8eef7] font-medium px-4 py-2 rounded-md hover:bg-[#122440] transition text-sm"
+              >
+                Copy URL
+              </button>
+              <button
+                onClick={shareToFeed}
+                className="bg-[#f5a623] text-[#0a1628] font-bold px-5 py-2 rounded-md hover:bg-[#ffc14d] transition"
+              >
+                Share to feed
+              </button>
+            </>
+          )}
+        </div>
+      </header>
+
+      <div className="flex-1 grid md:grid-cols-2">
+        <section className="border-r border-[#1f3252] p-4 space-y-3 overflow-y-auto">
+          <div className="space-y-2">
+            <label className="text-xs text-[#b8c4d4] uppercase tracking-wide">Snap title</label>
+            <input
+              value={doc.title}
+              onChange={(e) => setDoc((d) => ({ ...d, title: e.target.value.slice(0, 60) }))}
+              className="w-full bg-[#122440] border border-[#1f3252] rounded px-3 py-2 text-sm"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs text-[#b8c4d4] uppercase tracking-wide">Theme</label>
+            <select
+              value={doc.theme}
+              onChange={(e) => setDoc((d) => ({ ...d, theme: e.target.value as SnapDoc['theme'] }))}
+              className="w-full bg-[#122440] border border-[#1f3252] rounded px-3 py-2 text-sm"
+            >
+              {['purple', 'amber', 'blue', 'green', 'red', 'pink', 'teal', 'gray'].map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-[#e8eef7] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={doc.confetti ?? false}
+              onChange={(e) => setDoc((d) => ({ ...d, confetti: e.target.checked }))}
+            />
+            Confetti effect on render
+          </label>
+
+          <details className="border border-[#1f3252] rounded">
+            <summary className="cursor-pointer px-2 py-1 text-xs text-[#b8c4d4] hover:text-[#f5a623]">
+              Coin {doc.coin?.caip19 ? `(buy $${doc.coin.symbol || 'token'} button auto-injected)` : '(none)'}
+            </summary>
+            <div className="p-2 space-y-2 text-xs">
+              <input
+                value={doc.coin?.caip19 ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value.trim();
+                  setDoc((d) => ({
+                    ...d,
+                    coin: v ? { ...(d.coin ?? {}), caip19: v } : undefined,
+                  }));
+                }}
+                placeholder="CAIP-19 (e.g. eip155:8453/erc20:0x...)"
+                className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1"
+              />
+              <input
+                value={doc.coin?.symbol ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value.trim();
+                  setDoc((d) => ({
+                    ...d,
+                    coin: d.coin ? { ...d.coin, symbol: v } : undefined,
+                  }));
+                }}
+                placeholder="Symbol (e.g. ZBL)"
+                className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1"
+                disabled={!doc.coin?.caip19}
+              />
+              <p className="text-[11px] text-[#5e7290]">
+                When set, every page auto-prepends a "Buy ${doc.coin?.symbol || 'token'}" button using the Snap{' '}
+                <code>swap_token</code> action. Launch a coin via Zora/Clanker/Empire Builder, then paste the CAIP-19 here.
+              </p>
+            </div>
+          </details>
+
+          <div className="border-t border-[#1f3252] pt-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs text-[#b8c4d4] uppercase tracking-wide">Pages</h3>
+              <button
+                onClick={addPage}
+                className="text-xs text-[#f5a623] hover:underline"
+              >
+                + add page
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {doc.pages.map((page) => (
+                <div key={page.id} className="flex items-center gap-1">
+                  <button
+                    onClick={() => setCurrentPageId(page.id)}
+                    className={`px-3 py-1 text-xs rounded transition ${
+                      currentPageId === page.id
+                        ? 'bg-[#f5a623] text-[#0a1628]'
+                        : 'bg-[#122440] border border-[#1f3252] text-[#e8eef7] hover:border-[#f5a623]'
+                    }`}
+                  >
+                    {page.id}
+                  </button>
+                  {doc.pages.length > 1 && (
+                    <button
+                      onClick={() => deletePage(page.id)}
+                      className="px-1 text-xs text-red-400 hover:bg-red-900 rounded"
+                    >
+                      x
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t border-[#1f3252] pt-3 space-y-2">
+            <h3 className="text-xs text-[#b8c4d4] uppercase tracking-wide">Blocks</h3>
+            {currentPage?.blocks.map((block, idx) => (
+              <BlockEditor
+                key={idx}
+                block={block}
+                idx={idx}
+                total={currentPage.blocks.length}
+                onChange={(patch) => updateBlock(idx, patch)}
+                onRemove={() => removeBlock(idx)}
+                onMove={(dir) => moveBlock(idx, dir)}
+                onReorder={reorderBlock}
+                onDuplicate={() => duplicateBlock(idx)}
+                errors={blockErrorMap.get(idx)}
+                allPageIds={doc.pages.map((p) => p.id)}
+              />
+            ))}
+          </div>
+
+          <div className="border-t border-[#1f3252] pt-3 space-y-2">
+            <h3 className="text-xs text-[#b8c4d4] uppercase tracking-wide">Import</h3>
+            <ImportFromSnap onImport={importFromSnap} />
+          </div>
+
+          <div className="border-t border-[#1f3252] pt-3 space-y-2">
+            <h3 className="text-xs text-[#b8c4d4] uppercase tracking-wide">Add block</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {BLOCK_OPTIONS.map((opt) => (
+                <button
+                  key={opt.type}
+                  onClick={() => addBlock(opt.type)}
+                  aria-label={`Add ${opt.label} block`}
+                  className="bg-[#122440] border border-[#1f3252] rounded px-3 py-3 text-xs hover:border-[#f5a623] transition min-h-[56px]"
+                >
+                  <div className="font-bold text-[#f5a623]">{opt.icon}</div>
+                  <div className="mt-1">{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="p-4 overflow-y-auto">
+          <h3 className="text-xs text-[#b8c4d4] uppercase tracking-wide mb-3">Live preview - {currentPageId}</h3>
+          <div className="bg-[#122440] border border-[#1f3252] rounded-lg p-4 space-y-3">
+            {currentPage?.blocks.map((b, i) => (
+              <BlockPreview key={i} block={b} theme={doc.theme} allPageIds={doc.pages.map((p) => p.id)} />
+            ))}
+            {!currentPage?.blocks || currentPage.blocks.length === 0 && (
+              <p className="text-[#b8c4d4] text-center py-8">No blocks yet. Add one from the left.</p>
+            )}
+          </div>
+
+          {deployed && (
+            <div className="mt-6 p-4 bg-[#122440] border border-[#f5a623] rounded-lg space-y-2">
+              <p className="text-sm text-[#b8c4d4]">Deployed. Snap is live at:</p>
+              <code className="block text-xs bg-[#0a1628] p-2 rounded break-all">
+                /api/snap/{deployed.length <= 20 ? deployed : `${deployed.slice(0, 60)}...`}
+              </code>
+              <p className="text-xs text-[#b8c4d4]">
+                Hit Share to feed (top right) to drop it in a cast.
+              </p>
+              {deployErr && (
+                <p className="text-xs text-amber-400">Note: {deployErr}</p>
+              )}
+            </div>
+          )}
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function BlockEditor({
+  block,
+  idx,
+  total,
+  onChange,
+  onRemove,
+  onMove,
+  onReorder,
+  onDuplicate,
+  errors,
+  allPageIds = [],
+}: {
+  block: Block;
+  idx: number;
+  total: number;
+  onChange: (patch: Partial<Block>) => void;
+  onRemove: () => void;
+  onMove: (dir: -1 | 1) => void;
+  onReorder?: (from: number, to: number) => void;
+  onDuplicate?: () => void;
+  errors?: string[];
+  allPageIds?: string[];
+}) {
+  const [dragOver, setDragOver] = useState(false);
+  const hasError = errors && errors.length > 0;
+  const borderClass = hasError
+    ? 'border-red-500'
+    : dragOver
+      ? 'border-[#f5a623]'
+      : 'border-[#1f3252]';
+
+  // iOS Safari drops native HTML5 DnD events. Hand-roll touch listeners on
+  // the drag handle so reorder works on phones too. Touch starts on handle,
+  // tracks finger over neighboring blocks via elementFromPoint, drops on
+  // touchend.
+  const touchStartIdxRef = useRef<number | null>(null);
+  function onTouchStart() {
+    if (!onReorder) return;
+    touchStartIdxRef.current = idx;
+  }
+  function onTouchMove(e: React.TouchEvent) {
+    if (touchStartIdxRef.current === null) return;
+    e.preventDefault();
+  }
+  function onTouchEnd(e: React.TouchEvent) {
+    if (!onReorder || touchStartIdxRef.current === null) return;
+    const t = e.changedTouches[0];
+    const targetEl = document.elementFromPoint(t.clientX, t.clientY);
+    const blockEl = targetEl?.closest('[data-block-idx]') as HTMLElement | null;
+    const targetIdx = blockEl ? Number(blockEl.dataset.blockIdx) : NaN;
+    const fromIdx = touchStartIdxRef.current;
+    touchStartIdxRef.current = null;
+    if (Number.isFinite(targetIdx) && targetIdx !== fromIdx) {
+      onReorder(fromIdx, targetIdx);
+    }
+  }
+
+  return (
+    <div
+      data-block-idx={idx}
+      draggable={!!onReorder}
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', String(idx));
+        e.dataTransfer.effectAllowed = 'move';
+      }}
+      onDragOver={(e) => {
+        if (!onReorder) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        if (!onReorder) return;
+        e.preventDefault();
+        setDragOver(false);
+        const from = Number(e.dataTransfer.getData('text/plain'));
+        if (Number.isFinite(from) && from !== idx) onReorder(from, idx);
+      }}
+      className={`bg-[#122440] border rounded p-3 space-y-2 ${borderClass}`}
+    >
+      {hasError && (
+        <div className="bg-red-950 border border-red-700 rounded px-2 py-1 text-xs text-red-300">
+          {errors!.map((e, i) => (
+            <div key={i}>! {e}</div>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-[#f5a623] uppercase flex items-center gap-1">
+          <span
+            className="cursor-grab text-[#5e7290] touch-none select-none px-1"
+            aria-label="Drag handle"
+            title="Drag to reorder"
+            role="button"
+            tabIndex={0}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+          >
+            ::
+          </span>
+          {block.type}
+        </span>
+        <div className="flex gap-1 text-xs">
+          <button onClick={() => onMove(-1)} disabled={idx === 0} className="px-2 py-0.5 hover:bg-[#1f3252] rounded disabled:opacity-30">
+            up
+          </button>
+          <button onClick={() => onMove(1)} disabled={idx === total - 1} className="px-2 py-0.5 hover:bg-[#1f3252] rounded disabled:opacity-30">
+            dn
+          </button>
+          {onDuplicate && (
+            <button onClick={onDuplicate} className="px-2 py-0.5 hover:bg-[#1f3252] rounded" title="Duplicate block">
+              dup
+            </button>
+          )}
+          <button onClick={onRemove} className="px-2 py-0.5 hover:bg-red-900 rounded text-red-400">
+            del
+          </button>
+        </div>
+      </div>
+
+      {block.type === 'header' && (
+        <>
+          <input
+            value={block.title}
+            onChange={(e) => onChange({ title: e.target.value } as Partial<Block>)}
+            placeholder="Title"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <input
+            value={block.subtitle ?? ''}
+            onChange={(e) => onChange({ subtitle: e.target.value } as Partial<Block>)}
+            placeholder="Subtitle (optional)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+        </>
+      )}
+
+      {block.type === 'text' && (
+        <textarea
+          value={block.content}
+          onChange={(e) => onChange({ content: e.target.value } as Partial<Block>)}
+          rows={3}
+          className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+        />
+      )}
+
+      {block.type === 'link' && (
+        <>
+          <input
+            value={block.label}
+            onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)}
+            placeholder="Button label"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <input
+            value={block.url}
+            onChange={(e) => onChange({ url: e.target.value } as Partial<Block>)}
+            placeholder="https://"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <div className="flex gap-2">
+            <select
+              value={block.icon ?? 'external-link'}
+              onChange={(e) => onChange({ icon: e.target.value as IconName } as Partial<Block>)}
+              className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            >
+              {ICONS.map((i) => (
+                <option key={i} value={i}>{i}</option>
+              ))}
+            </select>
+            <select
+              value={block.variant ?? 'primary'}
+              onChange={(e) => onChange({ variant: e.target.value as 'primary' | 'secondary' } as Partial<Block>)}
+              className="bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            >
+              <option value="primary">primary</option>
+              <option value="secondary">secondary</option>
+            </select>
+          </div>
+        </>
+      )}
+
+      {block.type === 'share' && (
+        <>
+          <input
+            value={block.label}
+            onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)}
+            placeholder="Button label"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <textarea
+            value={block.text}
+            onChange={(e) => onChange({ text: e.target.value } as Partial<Block>)}
+            placeholder="Cast text"
+            rows={2}
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <select
+            value={block.icon ?? 'share'}
+            onChange={(e) => onChange({ icon: e.target.value as IconName } as Partial<Block>)}
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          >
+            {ICONS.map((i) => (
+              <option key={i} value={i}>{i}</option>
+            ))}
+          </select>
+        </>
+      )}
+
+      {block.type === 'image' && (
+        <>
+          <ImageUploader
+            currentUrl={block.url}
+            onUploaded={(url) => onChange({ url } as Partial<Block>)}
+          />
+          <input
+            value={block.url}
+            onChange={(e) => onChange({ url: e.target.value } as Partial<Block>)}
+            placeholder="https://image.url (or upload above)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <input
+            value={block.alt}
+            onChange={(e) => onChange({ alt: e.target.value } as Partial<Block>)}
+            placeholder="Alt text"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <select
+            value={block.aspect}
+            onChange={(e) => onChange({ aspect: e.target.value as 'image' extends Block['type'] ? '1:1' : never } as Partial<Block>)}
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          >
+            <option value="1:1">1:1</option>
+            <option value="16:9">16:9</option>
+            <option value="4:3">4:3</option>
+            <option value="9:16">9:16</option>
+          </select>
+        </>
+      )}
+
+      {block.type === 'music' && (
+        <>
+          <input
+            value={block.url}
+            onChange={(e) => onChange({ url: e.target.value } as Partial<Block>)}
+            placeholder="Spotify / Tortoise / SoundCloud / YouTube URL"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <input
+            value={block.label}
+            onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)}
+            placeholder="Button label (e.g. Listen)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <select
+            value={block.icon ?? 'play'}
+            onChange={(e) => onChange({ icon: e.target.value as IconName } as Partial<Block>)}
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          >
+            {ICONS.map((i) => (
+              <option key={i} value={i}>{i}</option>
+            ))}
+          </select>
+        </>
+      )}
+
+      {block.type === 'artist' && (
+        <>
+          <input
+            value={block.displayName}
+            onChange={(e) => onChange({ displayName: e.target.value } as Partial<Block>)}
+            placeholder="Display name"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <input
+            type="number"
+            value={block.fid}
+            onChange={(e) => onChange({ fid: Number(e.target.value) } as Partial<Block>)}
+            placeholder="Farcaster FID"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <input
+            value={block.label}
+            onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)}
+            placeholder="Button label (e.g. View profile)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+        </>
+      )}
+
+      {block.type === 'poll' && (
+        <PollEditor block={block} onChange={onChange} />
+      )}
+
+      {block.type === 'chart' && (
+        <ChartEditor block={block} onChange={onChange} />
+      )}
+
+      {block.type === 'toggle' && (
+        <ToggleEditor block={block} onChange={onChange} />
+      )}
+
+      {block.type === 'navigate' && (
+        <>
+          <input
+            value={block.label}
+            onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)}
+            placeholder="Button label"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <select
+            value={block.pageId}
+            onChange={(e) => onChange({ pageId: e.target.value } as Partial<Block>)}
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          >
+            {allPageIds
+              .filter((pid) => pid !== 'home') // Can't navigate to current page from this simple impl
+              .map((pid) => (
+                <option key={pid} value={pid}>
+                  {pid}
+                </option>
+              ))}
+          </select>
+          <div className="flex gap-2">
+            <select
+              value={block.icon ?? 'chevron-right'}
+              onChange={(e) => onChange({ icon: e.target.value as IconName } as Partial<Block>)}
+              className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            >
+              {ICONS.map((i) => (
+                <option key={i} value={i}>{i}</option>
+              ))}
+            </select>
+            <select
+              value={block.variant ?? 'primary'}
+              onChange={(e) => onChange({ variant: e.target.value as 'primary' | 'secondary' } as Partial<Block>)}
+              className="bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            >
+              <option value="primary">primary</option>
+              <option value="secondary">secondary</option>
+            </select>
+          </div>
+        </>
+      )}
+
+      {block.type === 'progress' && (
+        <>
+          <input
+            value={block.label}
+            onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)}
+            placeholder="Label (e.g. Funded)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <div className="flex gap-2">
+            <input type="number" value={block.value} onChange={(e) => onChange({ value: Number(e.target.value) } as Partial<Block>)} placeholder="value" className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm" />
+            <input type="number" value={block.max} onChange={(e) => onChange({ max: Number(e.target.value) } as Partial<Block>)} placeholder="max" className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm" />
+          </div>
+        </>
+      )}
+      {block.type === 'slider' && (
+        <>
+          <input value={block.label} onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)} placeholder="Label (e.g. Rate)" className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm" />
+          <div className="flex gap-2">
+            <input type="number" value={block.min} onChange={(e) => onChange({ min: Number(e.target.value) } as Partial<Block>)} placeholder="min" className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm" />
+            <input type="number" value={block.max} onChange={(e) => onChange({ max: Number(e.target.value) } as Partial<Block>)} placeholder="max" className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm" />
+            <input type="number" value={block.defaultValue} onChange={(e) => onChange({ defaultValue: Number(e.target.value) } as Partial<Block>)} placeholder="default" className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm" />
+          </div>
+        </>
+      )}
+      {block.type === 'switch' && (
+        <>
+          <input value={block.label} onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)} placeholder="Label" className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm" />
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={block.defaultChecked} onChange={(e) => onChange({ defaultChecked: e.target.checked } as Partial<Block>)} />
+            Default checked
+          </label>
+        </>
+      )}
+      {block.type === 'header' && (
+        <>
+          <input
+            value={block.badgeText ?? ''}
+            onChange={(e) => onChange({ badgeText: e.target.value } as Partial<Block>)}
+            placeholder="Badge text (optional)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <select
+            value={block.badgeColor ?? 'gray'}
+            onChange={(e) => onChange({ badgeColor: e.target.value as 'green' | 'red' | 'amber' | 'gray' | 'purple' | 'blue' | 'pink' | 'teal' } as Partial<Block>)}
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          >
+            {['gray', 'green', 'amber', 'red', 'purple', 'blue', 'pink', 'teal'].map((c) => (
+              <option key={c} value={c}>badge: {c}</option>
+            ))}
+          </select>
+        </>
+      )}
+      {block.type === 'feedback' && (
+        <>
+          <input
+            value={block.label}
+            onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)}
+            placeholder="Button label (e.g. Send feedback)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <input
+            value={block.prompt}
+            onChange={(e) => onChange({ prompt: e.target.value } as Partial<Block>)}
+            placeholder="Prompt (e.g. What should we add?)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <div className="flex gap-2">
+            <span className="text-sm text-[#b8c4d4] self-center">@</span>
+            <input
+              value={block.mention}
+              onChange={(e) => onChange({ mention: e.target.value.replace(/^@/, '') } as Partial<Block>)}
+              placeholder="zaal"
+              className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+          </div>
+          <input
+            value={block.prefix ?? ''}
+            onChange={(e) => onChange({ prefix: e.target.value } as Partial<Block>)}
+            placeholder="Prefix (e.g. feedback for zlank:)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <input
+            value={block.channelKey ?? ''}
+            onChange={(e) => onChange({ channelKey: e.target.value.replace(/^\//, '') } as Partial<Block>)}
+            placeholder="Channel key (optional, no leading /)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+        </>
+      )}
+      {block.type === 'chatbot' && (
+        <>
+          <input
+            value={block.title}
+            onChange={(e) => onChange({ title: e.target.value } as Partial<Block>)}
+            placeholder="Title (e.g. What are you building?)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <input
+            value={block.prompt}
+            onChange={(e) => onChange({ prompt: e.target.value } as Partial<Block>)}
+            placeholder="Subtitle / prompt"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <textarea
+            value={block.systemPrompt}
+            onChange={(e) => onChange({ systemPrompt: e.target.value } as Partial<Block>)}
+            placeholder="System prompt - frames the LLM"
+            rows={3}
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <div className="flex gap-2">
+            <input
+              value={block.label}
+              onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)}
+              placeholder="Button label"
+              className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+            <input
+              value={block.placeholder ?? ''}
+              onChange={(e) => onChange({ placeholder: e.target.value } as Partial<Block>)}
+              placeholder="Input placeholder"
+              className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+          </div>
+        </>
+      )}
+      {block.type === 'leaderboard' && (
+        <>
+          <input
+            value={block.title}
+            onChange={(e) => onChange({ title: e.target.value } as Partial<Block>)}
+            placeholder="Title (e.g. Live results)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <div className="flex gap-2">
+            <span className="self-center text-xs text-[#b8c4d4]">Poll block #</span>
+            <input
+              type="number"
+              value={block.pollBlockIdx}
+              onChange={(e) => onChange({ pollBlockIdx: Number(e.target.value) } as Partial<Block>)}
+              placeholder="0"
+              className="w-20 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+            <span className="self-center text-xs text-[#b8c4d4]">Top N:</span>
+            <input
+              type="number"
+              value={block.topN ?? 5}
+              onChange={(e) => onChange({ topN: Number(e.target.value) } as Partial<Block>)}
+              placeholder="5"
+              className="w-20 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+          </div>
+          <p className="text-[11px] text-[#5e7290]">
+            Pulls live tallies from a poll block on the same page. Index = position of the poll (0 = first block).
+          </p>
+        </>
+      )}
+      {block.type === 'divider' && <p className="text-xs text-[#b8c4d4]">Visual separator. No fields.</p>}
+
+      <GateEditor block={block} onChange={onChange} />
+    </div>
+  );
+}
+
+function ImportFromSnap({ onImport }: { onImport: (id: string) => void | Promise<void> }) {
+  const [val, setVal] = useState('');
+  const [busy, setBusy] = useState(false);
+  async function go() {
+    const id = val.trim().split('/').pop()?.trim();
+    if (!id) return;
+    setBusy(true);
+    try {
+      await onImport(id);
+      setVal('');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="flex gap-2">
+      <input
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') go();
+        }}
+        placeholder="Snap id or URL (e.g. v8-myn)"
+        className="flex-1 bg-[#122440] border border-[#1f3252] rounded px-2 py-1 text-sm"
+      />
+      <button
+        onClick={go}
+        disabled={busy || !val.trim()}
+        className="px-3 py-1 bg-[#f5a623] text-[#0a1628] rounded text-xs font-bold disabled:opacity-40"
+      >
+        {busy ? '...' : 'Import'}
+      </button>
+    </div>
+  );
+}
+
+function ImageUploader({
+  currentUrl,
+  onUploaded,
+}: {
+  currentUrl: string;
+  onUploaded: (url: string) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleFile(file: File) {
+    const MAX = 4 * 1024 * 1024;
+    const ALLOWED = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    if (file.size > MAX) {
+      setErr(`File too large (${Math.round(file.size / 1024)} KB, max 4 MB)`);
+      return;
+    }
+    if (file.type && !ALLOWED.includes(file.type)) {
+      setErr(`Unsupported type: ${file.type}`);
+      return;
+    }
+    setUploading(true);
+    setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      const data = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      onUploaded(data.url);
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <label className="px-2 py-1 bg-[#0a1628] border border-[#1f3252] rounded text-xs cursor-pointer hover:bg-[#1f3252]">
+          {uploading ? 'Uploading...' : 'Upload image'}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleFile(f);
+              e.target.value = '';
+            }}
+            disabled={uploading}
+            className="hidden"
+          />
+        </label>
+        {currentUrl && (
+          <a
+            href={currentUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-[#b8c4d4] underline truncate max-w-[180px]"
+          >
+            {currentUrl.replace(/^https?:\/\//, '').slice(0, 40)}
+          </a>
+        )}
+      </div>
+      {err && <p className="text-[11px] text-red-400">{err}</p>}
+    </div>
+  );
+}
+
+const GATE_PRESETS: { id: string; symbol: string; address: string; decimals: number }[] = [
+  { id: 'zabal', symbol: 'ZABAL', address: '0xbB48f19B0494Ff7C1fE5Dc2032aeEE14312f0b07', decimals: 18 },
+];
+
+function GateEditor({ block, onChange }: { block: Block; onChange: (patch: Partial<Block>) => void }) {
+  const gate = block.gate;
+  const presetMatch = gate
+    ? GATE_PRESETS.find((p) => p.address.toLowerCase() === gate.token.toLowerCase())
+    : null;
+  const mode: 'none' | 'preset' | 'custom' = !gate ? 'none' : presetMatch ? 'preset' : 'custom';
+
+  function clearGate() {
+    onChange({ gate: undefined } as Partial<Block>);
+  }
+  function applyPreset(preset: typeof GATE_PRESETS[number]) {
+    onChange({
+      gate: {
+        type: 'token-balance',
+        token: preset.address,
+        symbol: preset.symbol,
+        minBalance: gate?.minBalance || '1',
+        decimals: preset.decimals,
+        upsellUrl: gate?.upsellUrl,
+      },
+    } as Partial<Block>);
+  }
+  function setCustom() {
+    onChange({
+      gate: {
+        type: 'token-balance',
+        token: gate?.token || '',
+        symbol: gate?.symbol || '',
+        minBalance: gate?.minBalance || '1',
+        decimals: gate?.decimals ?? 18,
+        upsellUrl: gate?.upsellUrl,
+      },
+    } as Partial<Block>);
+  }
+  function patchGate(patch: Partial<NonNullable<Block['gate']>>) {
+    if (!gate) return;
+    onChange({ gate: { ...gate, ...patch } } as Partial<Block>);
+  }
+
+  return (
+    <details className="border border-[#1f3252] rounded">
+      <summary className="cursor-pointer px-2 py-1 text-xs text-[#b8c4d4] hover:text-[#f5a623]">
+        Gate {gate ? `(holders only - ${gate.symbol || 'token'} >= ${gate.minBalance})` : '(public)'}
+      </summary>
+      <div className="p-2 space-y-2 text-xs">
+        <div className="flex gap-2">
+          <button
+            onClick={clearGate}
+            className={`px-2 py-1 rounded ${mode === 'none' ? 'bg-[#f5a623] text-[#0a1628]' : 'bg-[#0a1628] border border-[#1f3252]'}`}
+          >
+            Public
+          </button>
+          {GATE_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => applyPreset(p)}
+              className={`px-2 py-1 rounded ${mode === 'preset' && presetMatch?.id === p.id ? 'bg-[#f5a623] text-[#0a1628]' : 'bg-[#0a1628] border border-[#1f3252]'}`}
+            >
+              {p.symbol}
+            </button>
+          ))}
+          <button
+            onClick={setCustom}
+            className={`px-2 py-1 rounded ${mode === 'custom' ? 'bg-[#f5a623] text-[#0a1628]' : 'bg-[#0a1628] border border-[#1f3252]'}`}
+          >
+            Custom
+          </button>
+        </div>
+
+        {gate && (
+          <div className="space-y-1">
+            {mode === 'custom' && (
+              <>
+                <input
+                  value={gate.token}
+                  onChange={(e) => patchGate({ token: e.target.value.trim() })}
+                  placeholder="Token contract address (0x...)"
+                  className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1"
+                />
+                <div className="flex gap-2">
+                  <input
+                    value={gate.symbol ?? ''}
+                    onChange={(e) => patchGate({ symbol: e.target.value })}
+                    placeholder="Symbol (e.g. MYTOKEN)"
+                    className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1"
+                  />
+                  <input
+                    type="number"
+                    value={gate.decimals ?? 18}
+                    onChange={(e) => patchGate({ decimals: Number(e.target.value) || 18 })}
+                    placeholder="decimals"
+                    className="w-20 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1"
+                  />
+                </div>
+              </>
+            )}
+            <div className="flex gap-2">
+              <span className="self-center text-[#b8c4d4]">Min balance:</span>
+              <input
+                value={gate.minBalance}
+                onChange={(e) => patchGate({ minBalance: e.target.value.trim() })}
+                placeholder="1"
+                className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1"
+              />
+            </div>
+            <input
+              value={gate.upsellUrl ?? ''}
+              onChange={(e) => patchGate({ upsellUrl: e.target.value })}
+              placeholder="Upsell URL (optional, e.g. swap link)"
+              className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1"
+            />
+            <p className="text-[#5e7290] text-[11px]">
+              Non-holders see {gate.upsellUrl ? 'a button opening the upsell URL' : 'a "holders only" message'}.
+            </p>
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function ChartEditor({
+  block,
+  onChange,
+}: {
+  block: import('@/lib/blocks').ChartBlock;
+  onChange: (patch: Partial<Block>) => void;
+}) {
+  function setBar(i: number, patch: Partial<{ label: string; value: number }>) {
+    const next = block.bars.map((b, j) => (j === i ? { ...b, ...patch } : b));
+    onChange({ bars: next } as Partial<Block>);
+  }
+  function addBar() {
+    if (block.bars.length >= 6) return;
+    onChange({ bars: [...block.bars, { label: 'New', value: 1 }] } as Partial<Block>);
+  }
+  function removeBar(i: number) {
+    if (block.bars.length <= 1) return;
+    onChange({ bars: block.bars.filter((_, j) => j !== i) } as Partial<Block>);
+  }
+  return (
+    <>
+      <input
+        value={block.title}
+        onChange={(e) => onChange({ title: e.target.value } as Partial<Block>)}
+        placeholder="Chart title"
+        className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+      />
+      <div className="space-y-1">
+        {block.bars.map((bar, i) => (
+          <div key={i} className="flex gap-1">
+            <input
+              value={bar.label}
+              onChange={(e) => setBar(i, { label: e.target.value })}
+              placeholder="Label"
+              className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+            <input
+              type="number"
+              value={bar.value}
+              onChange={(e) => setBar(i, { value: Number(e.target.value) })}
+              placeholder="Value"
+              className="w-20 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+            {block.bars.length > 1 && (
+              <button onClick={() => removeBar(i)} className="px-2 text-xs text-red-400 hover:bg-red-900 rounded">x</button>
+            )}
+          </div>
+        ))}
+      </div>
+      {block.bars.length < 6 && (
+        <button onClick={addBar} className="text-xs text-[#f5a623] hover:underline">+ add bar</button>
+      )}
+    </>
+  );
+}
+
+function ToggleEditor({
+  block,
+  onChange,
+}: {
+  block: import('@/lib/blocks').ToggleBlock;
+  onChange: (patch: Partial<Block>) => void;
+}) {
+  function setOption(i: number, value: string) {
+    const next = [...block.options];
+    next[i] = value;
+    onChange({ options: next } as Partial<Block>);
+  }
+  function addOption() {
+    if (block.options.length >= 6) return;
+    onChange({ options: [...block.options, `Option ${block.options.length + 1}`] } as Partial<Block>);
+  }
+  function removeOption(i: number) {
+    if (block.options.length <= 2) return;
+    onChange({ options: block.options.filter((_, j) => j !== i) } as Partial<Block>);
+  }
+  return (
+    <>
+      <input
+        value={block.label}
+        onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)}
+        placeholder="Toggle label"
+        className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+      />
+      <select
+        value={block.orientation ?? 'horizontal'}
+        onChange={(e) => onChange({ orientation: e.target.value as 'horizontal' | 'vertical' } as Partial<Block>)}
+        className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+      >
+        <option value="horizontal">horizontal</option>
+        <option value="vertical">vertical</option>
+      </select>
+      <div className="space-y-1">
+        {block.options.map((opt, i) => (
+          <div key={i} className="flex gap-1">
+            <input
+              value={opt}
+              onChange={(e) => setOption(i, e.target.value)}
+              placeholder={`Option ${i + 1}`}
+              className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+            {block.options.length > 2 && (
+              <button onClick={() => removeOption(i)} className="px-2 text-xs text-red-400 hover:bg-red-900 rounded">x</button>
+            )}
+          </div>
+        ))}
+      </div>
+      {block.options.length < 6 && (
+        <button onClick={addOption} className="text-xs text-[#f5a623] hover:underline">+ add option</button>
+      )}
+    </>
+  );
+}
+
+function PollEditor({
+  block,
+  onChange,
+}: {
+  block: import('@/lib/blocks').PollBlock;
+  onChange: (patch: Partial<Block>) => void;
+}) {
+  function setOption(i: number, value: string) {
+    const next = [...block.options];
+    next[i] = value;
+    onChange({ options: next } as Partial<Block>);
+  }
+
+  function addOption() {
+    if (block.options.length >= 4) return;
+    onChange({ options: [...block.options, `Option ${block.options.length + 1}`] } as Partial<Block>);
+  }
+
+  function removeOption(i: number) {
+    if (block.options.length <= 2) return;
+    onChange({ options: block.options.filter((_, j) => j !== i) } as Partial<Block>);
+  }
+
+  return (
+    <>
+      <input
+        value={block.question}
+        onChange={(e) => onChange({ question: e.target.value } as Partial<Block>)}
+        placeholder="Poll question"
+        className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+      />
+      <div className="space-y-1">
+        {block.options.map((opt, i) => (
+          <div key={i} className="flex gap-1">
+            <input
+              value={opt}
+              onChange={(e) => setOption(i, e.target.value)}
+              placeholder={`Option ${i + 1}`}
+              className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+            {block.options.length > 2 && (
+              <button
+                onClick={() => removeOption(i)}
+                className="px-2 text-xs text-red-400 hover:bg-red-900 rounded"
+              >
+                x
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      {block.options.length < 4 && (
+        <button
+          onClick={addOption}
+          className="text-xs text-[#f5a623] hover:underline"
+        >
+          + add option
+        </button>
+      )}
+      <p className="text-xs text-[#b8c4d4]">v1: vote tallying ships in v0.5 with DB.</p>
+    </>
+  );
+}
+
+function BlockPreview({ block, theme, allPageIds = [] }: { block: Block; theme: SnapDoc['theme']; allPageIds?: string[] }) {
+  const accent = `var(--color-zao${theme === 'purple' ? 'purple' : theme === 'amber' ? 'gold' : 'gold'})`;
+
+  if (block.type === 'header') {
+    return (
+      <div className="border-l-4 pl-3" style={{ borderColor: accent }}>
+        <div className="font-bold">{block.title}</div>
+        {block.subtitle && <div className="text-sm text-[#b8c4d4] mt-1">{block.subtitle}</div>}
+      </div>
+    );
+  }
+  if (block.type === 'text') {
+    return <p className="text-sm whitespace-pre-wrap">{block.content}</p>;
+  }
+  if (block.type === 'link') {
+    return (
+      <a className="block bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 text-center font-medium hover:border-[#f5a623] transition" style={{ color: accent }}>
+        {block.label}
+      </a>
+    );
+  }
+  if (block.type === 'navigate') {
+    return (
+      <div className="block bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 text-center font-medium" style={{ color: accent }}>
+        {block.label}
+      </div>
+    );
+  }
+  if (block.type === 'share') {
+    return (
+      <div className="bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 text-center text-sm" style={{ color: accent }}>
+        {block.label} (compose cast)
+      </div>
+    );
+  }
+  if (block.type === 'image') {
+    const aspectClass = block.aspect === '1:1' ? 'aspect-square' : block.aspect === '16:9' ? 'aspect-video' : block.aspect === '4:3' ? 'aspect-4/3' : 'aspect-[9/16]';
+    return (
+      <div className={`bg-[#0a1628] border border-[#1f3252] rounded ${aspectClass} flex items-center justify-center text-xs text-[#b8c4d4]`}>
+        Image: {block.alt}
+      </div>
+    );
+  }
+  if (block.type === 'divider') {
+    return <hr className="border-[#1f3252]" />;
+  }
+  if (block.type === 'music') {
+    return (
+      <div className="bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 flex items-center gap-2" style={{ color: accent }}>
+        <span className="font-bold">[MUSIC]</span>
+        <span className="text-sm">{block.label}</span>
+      </div>
+    );
+  }
+  if (block.type === 'artist') {
+    return (
+      <div className="bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 space-y-1">
+        <div className="font-medium" style={{ color: accent }}>{block.displayName}</div>
+        <div className="text-xs text-[#b8c4d4]">FID {block.fid} - {block.label}</div>
+      </div>
+    );
+  }
+  if (block.type === 'poll') {
+    return (
+      <div className="bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 space-y-2">
+        <div className="font-bold text-sm">{block.question}</div>
+        <ul className="text-xs text-[#b8c4d4] space-y-1">
+          {block.options.map((opt, i) => (
+            <li key={i}>- {opt}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+  if (block.type === 'chart') {
+    const max = Math.max(...block.bars.map((b) => b.value), 1);
+    return (
+      <div className="bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 space-y-2">
+        <div className="font-bold text-sm">{block.title}</div>
+        <div className="space-y-1">
+          {block.bars.map((bar, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs">
+              <span className="w-20 truncate text-[#b8c4d4] text-right">{bar.label}</span>
+              <div className="flex-1 h-2 bg-[#1f3252] rounded">
+                <div
+                  className="h-full rounded"
+                  style={{ width: `${(bar.value / max) * 100}%`, background: accent }}
+                />
+              </div>
+              <span className="w-8 text-[#b8c4d4] tabular-nums">{bar.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (block.type === 'toggle') {
+    return (
+      <div className="bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 space-y-1">
+        <div className="text-xs text-[#b8c4d4]">{block.label}</div>
+        <div className={block.orientation === 'vertical' ? 'flex flex-col gap-1' : 'flex gap-1'}>
+          {block.options.map((opt, i) => (
+            <span
+              key={i}
+              className="px-2 py-1 bg-[#1f3252] rounded text-xs"
+              style={i === 0 ? { background: accent, color: '#0a1628' } : {}}
+            >
+              {opt}
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (block.type === 'progress') {
+    const pct = Math.min(100, (block.value / Math.max(1, block.max)) * 100);
+    return (
+      <div className="space-y-1">
+        <div className="text-xs text-[#b8c4d4]">{block.label}</div>
+        <div className="h-2 bg-[#1f3252] rounded">
+          <div className="h-full rounded" style={{ width: `${pct}%`, background: accent }} />
+        </div>
+      </div>
+    );
+  }
+  if (block.type === 'slider') {
+    return (
+      <div className="space-y-1">
+        <div className="text-xs text-[#b8c4d4]">{block.label} ({block.min}-{block.max}, default {block.defaultValue})</div>
+        <input type="range" min={block.min} max={block.max} value={block.defaultValue} readOnly className="w-full" />
+      </div>
+    );
+  }
+  if (block.type === 'switch') {
+    return (
+      <div className="flex items-center justify-between bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2">
+        <span className="text-sm">{block.label}</span>
+        <span className={`px-2 py-0.5 text-xs rounded ${block.defaultChecked ? 'text-[#0a1628]' : 'text-[#b8c4d4]'}`} style={block.defaultChecked ? { background: accent } : { background: '#1f3252' }}>
+          {block.defaultChecked ? 'on' : 'off'}
+        </span>
+      </div>
+    );
+  }
+  return null;
+}

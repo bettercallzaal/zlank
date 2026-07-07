@@ -1,0 +1,533 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { parseRequest } from '@farcaster/snap/server';
+import { resolveSnap } from '@/lib/resolve-snap';
+import { docToSnap } from '@/lib/snap-spec';
+import { resolveDataSources, type ResolvedDataSources } from '@/lib/live-data';
+import { recordVote, appendChatLog, bumpStat, getVotes, claimVote, claimChatTurn, incrementPartnerStat } from '@/lib/kv';
+import { evaluateGates, isGateRule, type GateResult } from '@/lib/gates';
+import { chat as llmChat } from '@/lib/llm';
+import type { SnapDoc, Block, ChartBar } from '@/lib/blocks';
+
+export const runtime = 'nodejs';
+
+// Content negotiation: Snap-aware Farcaster clients request this URL with
+// Accept: application/vnd.farcaster.snap+json -> we return Snap JSON inline.
+// Other clients (browsers, older FC) get HTML with fc:miniapp meta tag for
+// Mini App embed fallback (image + Open button -> webview viewer).
+
+const SNAP_MEDIA_TYPE = 'application/vnd.farcaster.snap+json';
+
+const FALLBACK_DOC: SnapDoc = {
+  version: 1,
+  title: 'Snap not found',
+  theme: 'gray',
+  pages: [
+    {
+      id: 'home',
+      blocks: [
+        { type: 'header', title: 'Snap not found', subtitle: 'Invalid or expired link' },
+        { type: 'text', content: 'Build your own at zlank.online' },
+        { type: 'link', label: 'Open Zlank', url: 'https://zlank.online' },
+      ],
+    },
+  ],
+};
+
+function getOrigin(req: NextRequest): string {
+  if (process.env.NEXT_PUBLIC_BASE_URL) return process.env.NEXT_PUBLIC_BASE_URL.replace(/\/$/, '');
+  const proto = req.headers.get('x-forwarded-proto') ?? 'https';
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'zlank.online';
+  return `${proto}://${host}`;
+}
+
+async function getEncoded(ctx: { params: Promise<{ encoded: string }> }): Promise<string> {
+  const { encoded } = await ctx.params;
+  return encoded;
+}
+
+/**
+ * Validate ?page= against the doc's known page IDs. Unknown pages fall through
+ * to the doc's first page so a malformed URL never renders a blank Snap.
+ * Per official examples (element-showcase, snap-catalog) - "view guard" pattern.
+ */
+function resolvePageId(doc: SnapDoc, requested: string | undefined): string | undefined {
+  if (!requested) return undefined;
+  const known = doc.pages.some((p) => p.id === requested);
+  return known ? requested : undefined;
+}
+
+/**
+ * In production we verify the JFS signature on every POST so input + FID are
+ * trustworthy. In dev / preview / emulator we keep the permissive parse so
+ * curl + the snap-emulator continue to work without signing.
+ */
+const VERIFY_JFS_IN_PROD = process.env.NODE_ENV === 'production' &&
+  process.env.ZLANK_VERIFY_JFS !== 'false';
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Accept',
+  'Access-Control-Expose-Headers': 'Link, Vary, Content-Type',
+};
+
+async function resolveLeaderboardsForPage(
+  doc: SnapDoc,
+  pageId: string | undefined,
+  snapId: string,
+): Promise<Map<number, Array<{ label: string; value: number }>> | undefined> {
+  const targetId = pageId || doc.pages[0]?.id;
+  const page = doc.pages.find((p) => p.id === targetId);
+  if (!page) return undefined;
+  const blocks = page.blocks
+    .map((block, idx) => ({ idx, block }))
+    .filter((b) => b.block.type === 'leaderboard');
+  if (blocks.length === 0) return undefined;
+  const out = new Map<number, Array<{ label: string; value: number }>>();
+  await Promise.all(
+    blocks.map(async ({ idx, block }) => {
+      if (block.type !== 'leaderboard') return;
+      const tallies = await getVotes(snapId, block.pollBlockIdx);
+      const sorted = Object.entries(tallies)
+        .sort(([, a], [, b]) => b - a)
+        .map(([label, value]) => ({ label, value }));
+      out.set(idx, sorted);
+    }),
+  );
+  return out;
+}
+
+async function resolveGatesForPage(
+  doc: SnapDoc,
+  pageId: string | undefined,
+  fid: number | undefined,
+): Promise<Map<number, GateResult> | undefined> {
+  const targetId = pageId || doc.pages[0]?.id;
+  const page = doc.pages.find((p) => p.id === targetId);
+  if (!page) return undefined;
+  const rules = page.blocks
+    .map((block, idx) => ({ idx, rule: block.gate }))
+    .filter(
+      (entry): entry is { idx: number; rule: NonNullable<typeof entry.rule> } =>
+        isGateRule(entry.rule),
+    );
+  if (rules.length === 0) return undefined;
+  return evaluateGates(rules, { fid });
+}
+
+function snapJsonResponse(
+  doc: SnapDoc,
+  origin: string,
+  encoded: string,
+  pageId?: string,
+  gateResults?: Map<number, GateResult>,
+  leaderboardData?: Map<number, Array<{ label: string; value: number }>>,
+  resolvedData?: ResolvedDataSources,
+): NextResponse {
+  const snap = docToSnap(doc, `${origin}/api/snap/${encoded}`, {
+    pageId,
+    gateResults,
+    leaderboardData,
+    resolvedData,
+  });
+  const linkHeader =
+    `</api/snap/${encoded}>; rel="alternate"; type="${SNAP_MEDIA_TYPE}", ` +
+    `</api/snap/${encoded}>; rel="alternate"; type="text/html"`;
+  return new NextResponse(JSON.stringify(snap), {
+    status: 200,
+    headers: {
+      'Content-Type': `${SNAP_MEDIA_TYPE}; charset=utf-8`,
+      Vary: 'Accept',
+      Link: linkHeader,
+      'cache-control': 'public, max-age=60, s-maxage=300',
+      ...CORS_HEADERS,
+    },
+  });
+}
+
+function htmlResponse(doc: SnapDoc, origin: string, encoded: string): NextResponse {
+  const viewerUrl = `${origin}/s/${encoded}`;
+  const titleSlug = encodeURIComponent(doc.title.slice(0, 40) || 'Zlank Snap');
+  const imageUrl = `https://placehold.co/1200x800/0a1628/f5a623/png?text=${titleSlug}&font=Roboto`;
+  const snapUrl = `${origin}/api/snap/${encoded}`;
+
+  // CRITICAL: NO fc:miniapp or fc:frame meta tags. Their presence forces
+  // Farcaster client to render as Mini App embed (image+button) instead of
+  // inline Snap. The Link header alternate is the canonical Snap discovery
+  // mechanism (matches duodo-snap working pattern).
+  const linkHeader =
+    `<${snapUrl}>; rel="alternate"; type="${SNAP_MEDIA_TYPE}", ` +
+    `<${snapUrl}>; rel="alternate"; type="text/html"`;
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${escapeHtml(doc.title)}</title>
+<meta name="description" content="A Farcaster Snap built with Zlank" />
+<meta property="og:title" content="${escapeHtml(doc.title)}" />
+<meta property="og:description" content="A Farcaster Snap built with Zlank" />
+<meta property="og:url" content="${snapUrl}" />
+<meta property="og:type" content="website" />
+<meta property="og:locale" content="en_US" />
+<meta property="og:image" content="${imageUrl}" />
+<meta property="og:image:alt" content="${escapeHtml(doc.title)}" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="${escapeHtml(doc.title)}" />
+<meta name="twitter:description" content="A Farcaster Snap built with Zlank" />
+<meta name="twitter:image" content="${imageUrl}" />
+<link rel="alternate" type="${SNAP_MEDIA_TYPE}" href="${snapUrl}" />
+</head>
+<body style="background:#0a1628;color:#e8eef7;font-family:-apple-system,sans-serif;padding:40px;text-align:center;">
+<h1 style="color:#f5a623;">${escapeHtml(doc.title)}</h1>
+<p>This is a Farcaster Snap. <a href="${viewerUrl}" style="color:#f5a623;">Open in browser</a> or share in a Farcaster cast to render inline.</p>
+<p><a href="${origin}" style="color:#b8c4d4;">Build your own at Zlank</a></p>
+</body>
+</html>`;
+
+  return new NextResponse(html, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      Vary: 'Accept',
+      Link: linkHeader,
+      'cache-control': 'public, max-age=60, s-maxage=300',
+      ...CORS_HEADERS,
+    },
+  });
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: CORS_HEADERS,
+  });
+}
+
+export async function GET(
+  req: NextRequest,
+  ctx: { params: Promise<{ encoded: string }> },
+) {
+  const encoded = await getEncoded(ctx);
+  const doc = (await resolveSnap(encoded)) ?? FALLBACK_DOC;
+  const origin = getOrigin(req);
+  const requestedPage = new URL(req.url).searchParams.get('page') ?? undefined;
+  const pageId = resolvePageId(doc, requestedPage);
+
+  // Content negotiation: Snap-aware clients ask for the snap media type.
+  const accept = req.headers.get('accept') ?? '';
+  if (accept.includes(SNAP_MEDIA_TYPE) || accept.includes('vnd.farcaster.snap')) {
+    bumpStat(encoded, 'views').catch((err) => console.error('bumpStat views', err));
+    if (doc.partner?.id) {
+      incrementPartnerStat(doc.partner.id, 'views').catch((err) =>
+        console.error('incrementPartnerStat views', err),
+      );
+    }
+    const [gateResults, leaderboardData, resolvedData] = await Promise.all([
+      resolveGatesForPage(doc, pageId, undefined),
+      resolveLeaderboardsForPage(doc, pageId, encoded),
+      resolveDataSources(doc.dataSource ?? []),
+    ]);
+    return snapJsonResponse(doc, origin, encoded, pageId, gateResults, leaderboardData, resolvedData);
+  }
+
+  return htmlResponse(doc, origin, encoded);
+}
+
+export async function POST(
+  req: NextRequest,
+  ctx: { params: Promise<{ encoded: string }> },
+) {
+  const encoded = await getEncoded(ctx);
+  const doc = (await resolveSnap(encoded)) ?? FALLBACK_DOC;
+  const origin = getOrigin(req);
+  const requestedPage = new URL(req.url).searchParams.get('page') ?? undefined;
+  const pageId = resolvePageId(doc, requestedPage);
+
+  // Parse JFS POST body for inputs + the viewer's FID (used for gate eval).
+  // Production: verify signature so inputs/fid are trustworthy.
+  // Dev / preview / emulator: skip verification so curl + snap-emulator work.
+  let inputs: Record<string, unknown> = {};
+  let fid: number | undefined;
+  try {
+    const parsed = await parseRequest(req.clone(), {
+      skipJFSVerification: !VERIFY_JFS_IN_PROD,
+      maxSkewSeconds: VERIFY_JFS_IN_PROD ? 60 * 5 : 60 * 60 * 24 * 365,
+    });
+    if (parsed.success && parsed.action.type === 'post') {
+      inputs = parsed.action.inputs ?? {};
+      fid = parsed.action.user?.fid ?? parsed.action.fid;
+    }
+  } catch {
+    // try fallback raw parse
+  }
+  // Raw fallback: base64-decode the payload field directly. Only safe in dev /
+  // emulator because it skips the JFS signature; in prod we trust parseRequest
+  // above + would log unsigned attempts.
+  if ((Object.keys(inputs).length === 0 || fid === undefined) && !VERIFY_JFS_IN_PROD) {
+    try {
+      const body = (await req.clone().json()) as {
+        payload?: string;
+        inputs?: Record<string, unknown>;
+        fid?: number;
+      };
+      if (body.inputs && typeof body.inputs === 'object') {
+        inputs = body.inputs;
+      }
+      if (typeof body.fid === 'number') fid = body.fid;
+      if (typeof body.payload === 'string') {
+        const padded = body.payload.replace(/-/g, '+').replace(/_/g, '/');
+        const padding = padded.length % 4 === 0 ? '' : '='.repeat(4 - (padded.length % 4));
+        const json = Buffer.from(padded + padding, 'base64').toString('utf8');
+        const decoded = JSON.parse(json) as {
+          inputs?: Record<string, unknown>;
+          fid?: number;
+          user?: { fid?: number };
+        };
+        if (decoded.inputs && typeof decoded.inputs === 'object') {
+          inputs = decoded.inputs;
+        }
+        if (fid === undefined) {
+          fid = decoded.user?.fid ?? decoded.fid;
+        }
+      }
+    } catch {
+      // give up
+    }
+  }
+
+  // FCs are positive integers >= 1. Reject 0, negatives, non-integers - any
+  // of those means upstream lied. Drop to undefined so dedupe + gate eval
+  // treat the request as anonymous instead of attributing to a fake FID.
+  if (
+    typeof fid !== 'number' ||
+    !Number.isInteger(fid) ||
+    fid < 1
+  ) {
+    fid = undefined;
+  }
+
+  const voteEntry = Object.entries(inputs).find(([k]) => k.startsWith('vote_'));
+  if (voteEntry) {
+    const [voteKey, voteValue] = voteEntry;
+    const blockIdx = Number(voteKey.replace('vote_', ''));
+    const optionRaw = String(voteValue ?? '').trim();
+    if (optionRaw) {
+      // One vote per FID per poll. Anonymous votes (no FID) always count.
+      const firstVote = await claimVote(encoded, blockIdx, fid);
+      let tallies: Record<string, number>;
+      if (firstVote) {
+        tallies = await recordVote(encoded, blockIdx, optionRaw);
+      } else {
+        tallies = await getVotes(encoded, blockIdx);
+      }
+      return snapJsonResponse(
+        buildResultsDoc(doc, blockIdx, tallies, optionRaw, !firstVote),
+        origin,
+        encoded,
+        pageId,
+      );
+    }
+  }
+
+  const chatEntry = Object.entries(inputs).find(([k]) => k.startsWith('chat_'));
+  if (chatEntry) {
+    const [chatKey, chatValue] = chatEntry;
+    const blockIdx = Number(chatKey.replace('chat_', ''));
+    const text = String(chatValue ?? '').trim().slice(0, 240);
+    if (text) {
+      const targetPage = doc.pages.find((p) => p.id === (pageId || doc.pages[0]?.id));
+      const block = targetPage?.blocks[blockIdx];
+      if (block?.type === 'chatbot') {
+        // Per-FID 10s cooldown so a single user can't flood the LLM + log.
+        const allowed = await claimChatTurn(encoded, fid, 10);
+        if (!allowed) {
+          return snapJsonResponse(
+            buildChatCooldownDoc(doc, block),
+            origin,
+            encoded,
+            pageId,
+          );
+        }
+        const reply = await llmChat(
+          [
+            { role: 'system', content: block.systemPrompt },
+            { role: 'user', content: text },
+          ],
+          { maxTokens: 180 },
+        );
+        await appendChatLog(encoded, { ts: Date.now(), fid, text, reply });
+        return snapJsonResponse(
+          buildChatReplyDoc(doc, block, text, reply, blockIdx),
+          origin,
+          encoded,
+          pageId,
+        );
+      }
+    }
+  }
+
+  const feedbackEntry = Object.entries(inputs).find(([k]) => k.startsWith('feedback_'));
+  if (feedbackEntry) {
+    const [fbKey, fbValue] = feedbackEntry;
+    const blockIdx = Number(fbKey.replace('feedback_', ''));
+    const text = String(fbValue ?? '').trim().slice(0, 240);
+    if (text) {
+      const targetPage = doc.pages.find((p) => p.id === (pageId || doc.pages[0]?.id));
+      const block = targetPage?.blocks[blockIdx];
+      if (block?.type === 'feedback') {
+        return snapJsonResponse(
+          buildFeedbackComposeDoc(doc, block, text),
+          origin,
+          encoded,
+          pageId,
+        );
+      }
+    }
+  }
+
+  if (Object.keys(inputs).length > 0) {
+    return snapJsonResponse(buildAckDoc(doc, inputs), origin, encoded, pageId);
+  }
+
+  bumpStat(encoded, 'interactions').catch((err) =>
+    console.error('bumpStat interactions', err),
+  );
+
+  // Bare submit (Unlock button etc) - re-render with gates + fresh leaderboards.
+  const [gateResults, leaderboardData, resolvedData] = await Promise.all([
+    resolveGatesForPage(doc, pageId, fid),
+    resolveLeaderboardsForPage(doc, pageId, encoded),
+    resolveDataSources(doc.dataSource ?? []),
+  ]);
+  return snapJsonResponse(doc, origin, encoded, pageId, gateResults, leaderboardData, resolvedData);
+}
+
+function buildResultsDoc(
+  doc: SnapDoc,
+  _blockIdx: number,
+  tallies: Record<string, number>,
+  votedFor: string,
+  alreadyVoted = false,
+): SnapDoc {
+  const bars: ChartBar[] = Object.entries(tallies)
+    .sort(([, a], [, b]) => b - a)
+    .map(([label, value]) => ({ label, value }));
+  const total = bars.reduce((s, b) => s + b.value, 0);
+  const headerTitle = alreadyVoted ? 'Already voted' : 'Vote recorded';
+  const headerSubtitle = alreadyVoted
+    ? `Your earlier pick stands. Live tally below.`
+    : `You picked: ${votedFor}`;
+  const newBlocks: Block[] = [
+    { type: 'header', title: headerTitle, subtitle: headerSubtitle },
+    { type: 'chart', title: `Live results (${total} votes)`, bars },
+    { type: 'divider' },
+    { type: 'text', content: 'Tap the original cast to share.' },
+  ];
+  return {
+    ...doc,
+    pages: [{ id: 'results', blocks: newBlocks }],
+    confetti: !alreadyVoted,
+  };
+}
+
+function buildChatCooldownDoc(
+  doc: SnapDoc,
+  block: { title: string },
+): SnapDoc {
+  const newBlocks: Block[] = [
+    { type: 'header', title: block.title, subtitle: 'Slow down' },
+    { type: 'text', content: 'Sending too fast. Wait a few seconds and try again.' },
+  ];
+  return {
+    ...doc,
+    pages: [{ id: 'chat-cooldown', blocks: newBlocks }],
+  };
+}
+
+function buildChatReplyDoc(
+  doc: SnapDoc,
+  block: { title: string; prompt: string; systemPrompt: string; label: string; placeholder?: string },
+  userText: string,
+  reply: string | null,
+  _blockIdx: number,
+): SnapDoc {
+  const replyText =
+    reply ??
+    'Logged. (No LLM key configured - ack only. Set MINIMAX_API_KEY or ANTHROPIC_API_KEY to enable replies.)';
+  const newBlocks: Block[] = [
+    { type: 'header', title: block.title, subtitle: 'Got it' },
+    { type: 'text', content: `You: ${userText.slice(0, 240)}` },
+    { type: 'divider' },
+    { type: 'text', content: replyText.slice(0, 320) },
+    { type: 'divider' },
+    {
+      type: 'chatbot',
+      title: block.title,
+      prompt: block.prompt,
+      systemPrompt: block.systemPrompt,
+      label: block.label,
+      placeholder: block.placeholder,
+    },
+  ];
+  return {
+    ...doc,
+    pages: [{ id: 'chat-reply', blocks: newBlocks }],
+  };
+}
+
+function buildFeedbackComposeDoc(
+  doc: SnapDoc,
+  block: { mention: string; prefix?: string; channelKey?: string },
+  text: string,
+): SnapDoc {
+  const mention = block.mention.replace(/^@/, '');
+  const prefix = block.prefix ? `${block.prefix} ` : '';
+  const cast = `@${mention} ${prefix}${text}`.slice(0, 1024);
+  const newBlocks: Block[] = [
+    {
+      type: 'header',
+      title: 'Ready to send',
+      subtitle: `Will tag @${mention}. Tap to open the composer.`,
+    },
+    { type: 'text', content: cast },
+    {
+      type: 'share',
+      label: 'Open composer',
+      text: cast,
+      icon: 'message-circle',
+      channelKey: block.channelKey,
+    },
+  ];
+  return {
+    ...doc,
+    pages: [{ id: 'feedback-confirm', blocks: newBlocks }],
+    confetti: true,
+  };
+}
+
+function buildAckDoc(doc: SnapDoc, inputs: Record<string, unknown>): SnapDoc {
+  const summary = Object.entries(inputs)
+    .map(([k, v]) => `${k.replace(/_\d+$/, '')} = ${String(v)}`)
+    .join('\n');
+  const newBlocks: Block[] = [
+    { type: 'header', title: 'Got it', subtitle: 'Your input was received' },
+    { type: 'text', content: summary || 'Input recorded' },
+  ];
+  return {
+    ...doc,
+    pages: [{ id: 'ack', blocks: newBlocks }],
+    confetti: true,
+  };
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => {
+    if (c === '&') return '&amp;';
+    if (c === '<') return '&lt;';
+    if (c === '>') return '&gt;';
+    if (c === '"') return '&quot;';
+    return '&#39;';
+  });
+}

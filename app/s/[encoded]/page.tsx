@@ -1,0 +1,377 @@
+import Link from 'next/link';
+import { resolveSnap } from '@/lib/resolve-snap';
+import { getVotes } from '@/lib/kv';
+import type { Block, SnapDoc, ChartBar } from '@/lib/blocks';
+import type { Metadata } from 'next';
+
+interface PageProps {
+  params: Promise<{ encoded: string }>;
+}
+
+const FALLBACK: SnapDoc = {
+  version: 1,
+  title: 'Snap not found',
+  theme: 'gray',
+  pages: [
+    {
+      id: 'home',
+      blocks: [
+        { type: 'header', title: 'Snap not found', subtitle: 'Invalid or expired link' },
+        { type: 'text', content: 'Build your own at zlank.online' },
+        { type: 'link', label: 'Open Zlank', url: 'https://zlank.online' },
+      ],
+    },
+  ],
+};
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { encoded } = await params;
+  const doc = (await resolveSnap(encoded)) ?? FALLBACK;
+  return {
+    title: `${doc.title} - Zlank`,
+    description: 'A Farcaster Snap built with Zlank',
+  };
+}
+
+const ACCENT_HEX: Record<SnapDoc['theme'], string> = {
+  purple: '#a855f7',
+  amber: '#f5a623',
+  blue: '#3b82f6',
+  green: '#22c55e',
+  red: '#ef4444',
+  pink: '#ec4899',
+  teal: '#14b8a6',
+  gray: '#94a3b8',
+};
+
+interface SnapViewerProps extends PageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+export default async function SnapViewer({ params, searchParams }: SnapViewerProps) {
+  const { encoded } = await params;
+  const { page: pageParam } = await searchParams;
+  const pageId = typeof pageParam === 'string' ? pageParam : undefined;
+
+  const doc = (await resolveSnap(encoded)) ?? FALLBACK;
+  const accent = ACCENT_HEX[doc.theme];
+
+  // Get the page to render (default to first page)
+  const currentPageId = pageId || doc.pages[0]?.id;
+  const currentPage = doc.pages.find((p) => p.id === currentPageId);
+  const blocks = currentPage?.blocks ?? doc.pages[0]?.blocks ?? [];
+
+  // Resolve leaderboard data on the server (parity with the inline Snap).
+  const leaderboardEntries = blocks
+    .map((b, idx) => ({ b, idx }))
+    .filter(({ b }) => b.type === 'leaderboard');
+  const leaderboardData = new Map<number, ChartBar[]>();
+  await Promise.all(
+    leaderboardEntries.map(async ({ b, idx }) => {
+      if (b.type !== 'leaderboard') return;
+      const tallies = await getVotes(encoded, b.pollBlockIdx);
+      leaderboardData.set(
+        idx,
+        Object.entries(tallies)
+          .sort(([, x], [, y]) => y - x)
+          .map(([label, value]) => ({ label, value })),
+      );
+    }),
+  );
+
+  return (
+    <main className="max-w-md mx-auto px-4 py-8 min-h-screen flex flex-col">
+      <div className="space-y-3 flex-1">
+        {blocks.map((block, i) => (
+          <BlockView
+            key={i}
+            block={block}
+            accent={accent}
+            encoded={encoded}
+            idx={i}
+            leaderboardData={leaderboardData.get(i)}
+          />
+        ))}
+      </div>
+      <footer className="mt-8 pt-4 border-t border-[#1f3252] text-xs text-[#b8c4d4] text-center">
+        Built with{' '}
+        <Link href="/" className="text-[#f5a623] hover:underline">
+          Zlank
+        </Link>
+      </footer>
+    </main>
+  );
+}
+
+function BlockView({
+  block,
+  accent,
+  encoded,
+  idx,
+  leaderboardData,
+}: {
+  block: Block;
+  accent: string;
+  encoded: string;
+  idx: number;
+  leaderboardData?: ChartBar[];
+}) {
+  switch (block.type) {
+    case 'header':
+      return (
+        <div className="border-l-4 pl-3 py-1" style={{ borderColor: accent }}>
+          <div className="text-xl font-bold">{block.title}</div>
+          {block.subtitle && (
+            <div className="text-sm text-[#b8c4d4] mt-1">{block.subtitle}</div>
+          )}
+        </div>
+      );
+    case 'text':
+      return <p className="text-base whitespace-pre-wrap leading-relaxed">{block.content}</p>;
+    case 'link':
+      return (
+        <a
+          href={block.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block bg-[#122440] border rounded-lg px-4 py-3 text-center font-bold hover:bg-[#1a2f4f] transition"
+          style={{ color: accent, borderColor: accent }}
+        >
+          {block.label}
+        </a>
+      );
+    case 'navigate':
+      return (
+        <Link
+          href={`/s/${encoded}?page=${encodeURIComponent(block.pageId)}`}
+          className="block bg-[#122440] border rounded-lg px-4 py-3 text-center font-bold hover:bg-[#1a2f4f] transition"
+          style={{ color: accent, borderColor: accent }}
+        >
+          {block.label}
+        </Link>
+      );
+    case 'share': {
+      const params = new URLSearchParams();
+      params.set('text', block.text);
+      const composeUrl = `https://farcaster.xyz/~/compose?${params.toString()}`;
+      return (
+        <a
+          href={composeUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3 text-center font-medium text-[#e8eef7] hover:border-[#f5a623] transition"
+        >
+          {block.label}
+        </a>
+      );
+    }
+    case 'image': {
+      const aspectClass =
+        block.aspect === '1:1'
+          ? 'aspect-square'
+          : block.aspect === '16:9'
+            ? 'aspect-video'
+            : block.aspect === '4:3'
+              ? 'aspect-[4/3]'
+              : 'aspect-[9/16]';
+      return (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={block.url}
+          alt={block.alt}
+          className={`w-full ${aspectClass} object-cover rounded-lg border border-[#1f3252]`}
+        />
+      );
+    }
+    case 'divider':
+      return <hr className="border-[#1f3252] my-2" />;
+    case 'music':
+      return (
+        <a
+          href={block.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-2 bg-[#122440] border rounded-lg px-4 py-3 font-bold hover:bg-[#1a2f4f] transition"
+          style={{ color: accent, borderColor: accent }}
+        >
+          <span>[MUSIC]</span>
+          <span>{block.label || 'Listen'}</span>
+        </a>
+      );
+    case 'artist':
+      return (
+        <a
+          href={`https://farcaster.xyz/~/profiles/${block.fid}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3 hover:border-[#f5a623] transition"
+        >
+          <div className="font-bold" style={{ color: accent }}>
+            {block.displayName}
+          </div>
+          <div className="text-xs text-[#b8c4d4] mt-1">
+            FID {block.fid} - {block.label || 'View profile'}
+          </div>
+        </a>
+      );
+    case 'poll':
+      return (
+        <div className="bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3 space-y-3">
+          <div className="font-bold">{block.question}</div>
+          <div className="space-y-2">
+            {block.options.map((opt, i) => (
+              <button
+                key={i}
+                className="w-full text-left bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 text-sm hover:border-[#f5a623] transition"
+              >
+                {i + 1}. {opt}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-[#b8c4d4]">Vote tallying ships in v0.5 with DB.</p>
+        </div>
+      );
+    case 'progress': {
+      const pct = Math.min(100, (block.value / Math.max(1, block.max)) * 100);
+      return (
+        <div className="space-y-2">
+          <div className="text-sm">{block.label}</div>
+          <div className="h-3 bg-[#1f3252] rounded">
+            <div className="h-full rounded transition-all" style={{ width: `${pct}%`, background: accent }} />
+          </div>
+          <div className="text-xs text-[#b8c4d4]">{block.value} / {block.max}</div>
+        </div>
+      );
+    }
+    case 'slider':
+      return (
+        <div className="space-y-2 bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3">
+          <div className="text-sm">{block.label}: {block.defaultValue}</div>
+          <input type="range" min={block.min} max={block.max} defaultValue={block.defaultValue} className="w-full" style={{ accentColor: accent }} />
+          <div className="flex justify-between text-xs text-[#b8c4d4]">
+            <span>{block.min}</span>
+            <span>{block.max}</span>
+          </div>
+        </div>
+      );
+    case 'switch':
+      return (
+        <label className="flex items-center justify-between bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3 cursor-pointer">
+          <span className="text-sm">{block.label}</span>
+          <input type="checkbox" defaultChecked={block.defaultChecked} style={{ accentColor: accent }} />
+        </label>
+      );
+    case 'chart': {
+      const total = block.bars.reduce((s, b) => s + b.value, 0) || 1;
+      return (
+        <div className="bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3 space-y-2">
+          <div className="font-bold text-sm" style={{ color: accent }}>{block.title}</div>
+          {block.bars.map((bar, i) => {
+            const pct = (bar.value / Math.max(...block.bars.map((b) => b.value), 1)) * 100;
+            return (
+              <div key={i} className="space-y-0.5">
+                <div className="flex justify-between text-xs">
+                  <span>{bar.label}</span>
+                  <span className="text-[#b8c4d4]">{bar.value}</span>
+                </div>
+                <div className="h-2 bg-[#1f3252] rounded">
+                  <div className="h-full rounded" style={{ width: `${pct}%`, background: accent }} />
+                </div>
+              </div>
+            );
+          })}
+          <div className="text-[11px] text-[#5e7290] pt-1">total: {total}</div>
+        </div>
+      );
+    }
+    case 'toggle':
+      return (
+        <div className="bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3 space-y-2">
+          {block.label && <div className="text-sm font-bold">{block.label}</div>}
+          <div className={`flex flex-wrap gap-2 ${block.orientation === 'vertical' ? 'flex-col' : ''}`}>
+            {block.options.map((opt, i) => (
+              <button
+                key={i}
+                className="bg-[#0a1628] border border-[#1f3252] rounded px-3 py-1.5 text-sm hover:border-[#f5a623] transition"
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    case 'feedback':
+      return (
+        <div className="bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3 space-y-2">
+          <div className="text-sm font-bold">{block.prompt}</div>
+          <input
+            placeholder="Type your feedback..."
+            disabled
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 text-sm"
+          />
+          <button
+            disabled
+            className="w-full bg-[#1f3252] text-[#b8c4d4] rounded px-3 py-2 text-sm cursor-not-allowed"
+          >
+            {block.label}
+          </button>
+          <p className="text-[11px] text-[#5e7290]">
+            Tags @{block.mention}. Send via Snap-aware Farcaster client.
+          </p>
+        </div>
+      );
+    case 'chatbot':
+      return (
+        <div className="bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3 space-y-2">
+          <div className="font-bold" style={{ color: accent }}>{block.title}</div>
+          <div className="text-xs text-[#b8c4d4]">{block.prompt}</div>
+          <input
+            placeholder={block.placeholder ?? 'Type here...'}
+            disabled
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 text-sm"
+          />
+          <button
+            disabled
+            className="w-full bg-[#1f3252] text-[#b8c4d4] rounded px-3 py-2 text-sm cursor-not-allowed"
+          >
+            {block.label}
+          </button>
+          <p className="text-[11px] text-[#5e7290]">
+            Live in Snap-aware Farcaster clients.{' '}
+            <Link href={`/chat-log/${encoded}`} className="underline">
+              View log
+            </Link>
+          </p>
+        </div>
+      );
+    case 'leaderboard': {
+      const bars = leaderboardData ?? [];
+      const topN = block.topN ?? 5;
+      const visible = bars.slice(0, topN);
+      return (
+        <div className="bg-[#122440] border border-[#1f3252] rounded-lg px-4 py-3 space-y-2">
+          <div className="font-bold text-sm" style={{ color: accent }}>{block.title}</div>
+          {visible.length === 0 ? (
+            <p className="text-xs text-[#b8c4d4]">No votes yet.</p>
+          ) : (
+            visible.map((bar, i) => {
+              const max = Math.max(...visible.map((b) => b.value), 1);
+              const pct = (bar.value / max) * 100;
+              return (
+                <div key={i} className="space-y-0.5">
+                  <div className="flex justify-between text-xs">
+                    <span>#{i + 1} {bar.label}</span>
+                    <span className="text-[#b8c4d4]">{bar.value}</span>
+                  </div>
+                  <div className="h-2 bg-[#1f3252] rounded">
+                    <div className="h-full rounded" style={{ width: `${pct}%`, background: accent }} />
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      );
+    }
+  }
+}
