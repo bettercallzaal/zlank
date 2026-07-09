@@ -147,16 +147,31 @@ function blockToElements(
     case 'share': {
       const props: Record<string, unknown> = { label: block.label };
       props.icon = block.icon ?? 'share';
-      const composeParams: Record<string, unknown> = {
-        text: block.text,
-        embeds: [baseUrl],
-      };
-      if (block.channelKey) composeParams.channelKey = block.channelKey;
-      elements[id] = {
-        type: 'button',
-        props,
-        on: { press: { action: 'compose_cast', params: composeParams } },
-      };
+      if (block.channelKey) {
+        // Mobile clients apply text but drop channelKey on compose_cast,
+        // so channel-routed shares go through the composer intent URL,
+        // which pre-selects the channel reliably.
+        const intent = new URL('https://farcaster.xyz/~/compose');
+        intent.searchParams.set('text', block.text);
+        intent.searchParams.append('embeds[]', baseUrl);
+        intent.searchParams.set('channelKey', block.channelKey);
+        elements[id] = {
+          type: 'button',
+          props,
+          on: { press: { action: 'open_url', params: { target: intent.toString() } } },
+        };
+      } else {
+        elements[id] = {
+          type: 'button',
+          props,
+          on: {
+            press: {
+              action: 'compose_cast',
+              params: { text: block.text, embeds: [baseUrl] },
+            },
+          },
+        };
+      }
       ids.push(id);
       break;
     }
