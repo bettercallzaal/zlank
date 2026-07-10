@@ -223,6 +223,135 @@ function newBlock(type: BlockType, availablePageIds: string[] = []): Block {
   }
 }
 
+interface MusicKitOption {
+  key: string;
+  label: string;
+  defaultOn: boolean;
+  build: (url: string) => Block;
+}
+
+// "Quick add: Music" - toggle common song-share actions instead of picking
+// raw blocks one at a time. Each toggle wraps an existing block with sensible
+// defaults; nothing new at the schema level.
+const MUSIC_KIT_OPTIONS: MusicKitOption[] = [
+  {
+    key: 'play',
+    label: 'Play',
+    defaultOn: true,
+    build: (url) => ({ type: 'music', url, label: 'Listen', icon: 'play' }),
+  },
+  {
+    key: 'visit',
+    label: 'Visit artist page',
+    defaultOn: true,
+    build: (url) => ({ type: 'link', label: 'Visit', url, icon: 'external-link', variant: 'secondary' }),
+  },
+  {
+    key: 'share',
+    label: 'Share',
+    defaultOn: true,
+    build: () => ({ type: 'share', label: 'Share', text: 'Just dropped this - give it a listen', icon: 'share' }),
+  },
+  {
+    key: 'mint',
+    label: 'Mint this track',
+    defaultOn: false,
+    build: () => ({
+      type: 'mintButton',
+      label: 'Mint',
+      contractAddress: '0x0000000000000000000000000000000000000000',
+      chainId: 8453,
+      partnerId: 'sound',
+    }),
+  },
+  {
+    key: 'coin',
+    label: 'Let fans buy in',
+    defaultOn: false,
+    build: () => ({ type: 'coinPost', postId: '', showHolders: true, showPrice: true, buyButton: true }),
+  },
+  {
+    key: 'vote',
+    label: 'Vote for the next single',
+    defaultOn: false,
+    build: () => ({
+      type: 'poll',
+      question: 'Which track should drop next?',
+      options: ['Option A', 'Option B'],
+    }),
+  },
+];
+
+interface EventKitInputs {
+  name: string;
+  locationUrl: string;
+}
+
+interface EventKitOption {
+  key: string;
+  label: string;
+  defaultOn: boolean;
+  /** If set, this option is only meaningful (and only selectable) when the
+   *  option with this key is also selected - e.g. a headcount leaderboard
+   *  needs the RSVP poll it tallies to actually exist on the page. */
+  requiresKey?: string;
+  /** Absent for options handled specially in addEventsKit (e.g. headcount,
+   *  which needs the RSVP poll's computed index, not just the raw inputs). */
+  build?: (inputs: EventKitInputs) => Block;
+}
+
+// "Quick add: Event" - same idea as the music kit, tailored to RSVP-style
+// snaps. Only uses block types that already have full editor + preview
+// support (poll, link, share, switch, leaderboard), so nothing renders as a
+// blank card.
+const EVENT_KIT_OPTIONS: EventKitOption[] = [
+  {
+    key: 'rsvp',
+    label: "I'm going / can't make it",
+    defaultOn: true,
+    build: ({ name }) => ({
+      type: 'poll',
+      question: name ? `Are you going to ${name}?` : 'Are you going?',
+      options: ["I'm in", "Can't make it"],
+    }),
+  },
+  {
+    key: 'location',
+    label: 'Location / directions',
+    defaultOn: true,
+    build: ({ locationUrl }) => ({
+      type: 'link',
+      label: 'Directions',
+      url: locationUrl || 'https://maps.google.com',
+      icon: 'external-link',
+      variant: 'secondary',
+    }),
+  },
+  {
+    key: 'share',
+    label: 'Share',
+    defaultOn: true,
+    build: ({ name }) => ({
+      type: 'share',
+      label: 'Share',
+      text: name ? `Join me at ${name}!` : 'Join me at this event!',
+      icon: 'share',
+    }),
+  },
+  {
+    key: 'remind',
+    label: 'Remind me',
+    defaultOn: false,
+    build: () => ({ type: 'switch', label: 'Remind me before it starts', defaultChecked: false }),
+  },
+  {
+    key: 'headcount',
+    label: "Who's going (headcount)",
+    defaultOn: false,
+    requiresKey: 'rsvp',
+  },
+];
+
 export default function Builder() {
   const [doc, setDoc] = useState<SnapDoc>(DEFAULT_SNAP);
   const [deployed, setDeployed] = useState<string | null>(null);
@@ -403,6 +532,64 @@ export default function Builder() {
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Import failed');
     }
+  }
+
+  function addMusicKit(url: string, selectedKeys: string[]) {
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl || selectedKeys.length === 0) return;
+    setDoc((d) => {
+      const pageIdx = d.pages.findIndex((p) => p.id === currentPageId);
+      if (pageIdx === -1) return d;
+      const newBlocks = MUSIC_KIT_OPTIONS.filter((opt) => selectedKeys.includes(opt.key)).map((opt) =>
+        clampBlock(opt.build(trimmedUrl)),
+      );
+      const newPages = [...d.pages];
+      newPages[pageIdx] = {
+        ...newPages[pageIdx],
+        blocks: [...newPages[pageIdx].blocks, ...newBlocks],
+      };
+      return { ...d, pages: newPages };
+    });
+  }
+
+  function addEventsKit(inputs: EventKitInputs, selectedKeys: string[]) {
+    const name = inputs.name.trim();
+    if (!name || selectedKeys.length === 0) return;
+    const locationUrl = inputs.locationUrl.trim();
+    setDoc((d) => {
+      const pageIdx = d.pages.findIndex((p) => p.id === currentPageId);
+      if (pageIdx === -1) return d;
+      const existingCount = d.pages[pageIdx].blocks.length;
+
+      // Options with a `build` are added directly. `headcount` has none - it
+      // needs the RSVP poll's computed index, so it's handled separately below.
+      const regularOptions = EVENT_KIT_OPTIONS.filter((opt) => opt.build && selectedKeys.includes(opt.key));
+      const newBlocks = regularOptions.map((opt) => clampBlock(opt.build!({ name, locationUrl })));
+
+      const headcountOpt = EVENT_KIT_OPTIONS.find((opt) => opt.key === 'headcount');
+      const requiredKey = headcountOpt?.requiresKey;
+      if (headcountOpt && requiredKey && selectedKeys.includes('headcount') && selectedKeys.includes(requiredKey)) {
+        const pollOffset = regularOptions.findIndex((opt) => opt.key === requiredKey);
+        if (pollOffset !== -1) {
+          newBlocks.push(
+            clampBlock({
+              type: 'leaderboard',
+              title: "Who's going",
+              source: 'votes',
+              pollBlockIdx: existingCount + pollOffset,
+              topN: 6,
+            }),
+          );
+        }
+      }
+
+      const newPages = [...d.pages];
+      newPages[pageIdx] = {
+        ...newPages[pageIdx],
+        blocks: [...newPages[pageIdx].blocks, ...newBlocks],
+      };
+      return { ...d, pages: newPages };
+    });
   }
 
   function addPage() {
@@ -747,6 +934,16 @@ export default function Builder() {
           <div className="border-t border-[#1f3252] pt-3 space-y-2">
             <h3 className="text-xs text-[#b8c4d4] uppercase tracking-wide">Import</h3>
             <ImportFromSnap onImport={importFromSnap} />
+          </div>
+
+          <div className="border-t border-[#1f3252] pt-3 space-y-2">
+            <h3 className="text-xs text-[#b8c4d4] uppercase tracking-wide">Quick add: Music</h3>
+            <MusicQuickAdd onAdd={addMusicKit} />
+          </div>
+
+          <div className="border-t border-[#1f3252] pt-3 space-y-2">
+            <h3 className="text-xs text-[#b8c4d4] uppercase tracking-wide">Quick add: Event</h3>
+            <EventsQuickAdd onAdd={addEventsKit} />
           </div>
 
           <div className="border-t border-[#1f3252] pt-3 space-y-2">
@@ -1303,6 +1500,100 @@ function BlockEditor({
         </>
       )}
       {block.type === 'divider' && <p className="text-xs text-[#b8c4d4]">Visual separator. No fields.</p>}
+      {block.type === 'mintButton' && (
+        <>
+          <input
+            value={block.label}
+            onChange={(e) => onChange({ label: e.target.value } as Partial<Block>)}
+            placeholder="Button label (e.g. Mint)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <input
+            value={block.contractAddress}
+            onChange={(e) => onChange({ contractAddress: e.target.value } as Partial<Block>)}
+            placeholder="0x... contract address"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <div className="flex gap-2">
+            <input
+              type="number"
+              value={block.chainId}
+              onChange={(e) => onChange({ chainId: Number(e.target.value) } as Partial<Block>)}
+              placeholder="Chain id (8453 = Base)"
+              className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+            <input
+              value={block.tokenId ?? ''}
+              onChange={(e) => onChange({ tokenId: e.target.value } as Partial<Block>)}
+              placeholder="Token ID (ERC-1155, optional)"
+              className="flex-1 bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+            />
+          </div>
+          <input
+            value={block.priceWei ?? ''}
+            onChange={(e) => onChange({ priceWei: e.target.value } as Partial<Block>)}
+            placeholder="Price in wei (optional)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <select
+            value={block.partnerId ?? ''}
+            onChange={(e) =>
+              onChange({
+                partnerId: e.target.value as 'highlight' | 'manifold' | 'sound' | 'zora' | '',
+              } as Partial<Block>)
+            }
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          >
+            <option value="">Partner: none</option>
+            <option value="highlight">Highlight</option>
+            <option value="manifold">Manifold</option>
+            <option value="sound">Sound</option>
+            <option value="zora">Zora</option>
+          </select>
+        </>
+      )}
+      {block.type === 'coinPost' && (
+        <>
+          <input
+            value={block.postId}
+            onChange={(e) => onChange({ postId: e.target.value } as Partial<Block>)}
+            placeholder="Zora coin id or cast hash"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <input
+            value={block.zoraUrl ?? ''}
+            onChange={(e) => onChange({ zoraUrl: e.target.value } as Partial<Block>)}
+            placeholder="https://zora.co/... (optional)"
+            className="w-full bg-[#0a1628] border border-[#1f3252] rounded px-2 py-1 text-sm"
+          />
+          <div className="flex gap-3 text-sm">
+            <label className="flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={block.showHolders ?? false}
+                onChange={(e) => onChange({ showHolders: e.target.checked } as Partial<Block>)}
+              />
+              Holders
+            </label>
+            <label className="flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={block.showPrice ?? false}
+                onChange={(e) => onChange({ showPrice: e.target.checked } as Partial<Block>)}
+              />
+              Price
+            </label>
+            <label className="flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={block.buyButton ?? false}
+                onChange={(e) => onChange({ buyButton: e.target.checked } as Partial<Block>)}
+              />
+              Buy button
+            </label>
+          </div>
+        </>
+      )}
 
       <GateEditor block={block} onChange={onChange} />
     </div>
@@ -1340,6 +1631,128 @@ function ImportFromSnap({ onImport }: { onImport: (id: string) => void | Promise
         className="px-3 py-1 bg-[#f5a623] text-[#0a1628] rounded text-xs font-bold disabled:opacity-40"
       >
         {busy ? '...' : 'Import'}
+      </button>
+    </div>
+  );
+}
+
+function MusicQuickAdd({ onAdd }: { onAdd: (url: string, selectedKeys: string[]) => void }) {
+  const [url, setUrl] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(MUSIC_KIT_OPTIONS.filter((opt) => opt.defaultOn).map((opt) => opt.key)),
+  );
+
+  function toggle(key: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function go() {
+    onAdd(url, Array.from(selected));
+    setUrl('');
+  }
+
+  return (
+    <div className="space-y-2">
+      <input
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') go();
+        }}
+        placeholder="Paste a song link (Spotify, Apple Music...)"
+        className="w-full bg-[#122440] border border-[#1f3252] rounded px-2 py-1 text-sm"
+      />
+      <div className="grid grid-cols-2 gap-1">
+        {MUSIC_KIT_OPTIONS.map((opt) => (
+          <label key={opt.key} className="flex items-center gap-1 text-xs">
+            <input type="checkbox" checked={selected.has(opt.key)} onChange={() => toggle(opt.key)} />
+            {opt.label}
+          </label>
+        ))}
+      </div>
+      <button
+        onClick={go}
+        disabled={!url.trim() || selected.size === 0}
+        className="px-3 py-1 bg-[#f5a623] text-[#0a1628] rounded text-xs font-bold disabled:opacity-40"
+      >
+        Add to snap
+      </button>
+    </div>
+  );
+}
+
+function EventsQuickAdd({ onAdd }: { onAdd: (inputs: EventKitInputs, selectedKeys: string[]) => void }) {
+  const [name, setName] = useState('');
+  const [locationUrl, setLocationUrl] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(EVENT_KIT_OPTIONS.filter((opt) => opt.defaultOn).map((opt) => opt.key)),
+  );
+
+  function toggle(key: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+        // Unchecking a required option also drops anything that depends on it,
+        // so a headcount leaderboard is never left pointing at a poll that no
+        // longer exists.
+        EVENT_KIT_OPTIONS.forEach((opt) => {
+          if (opt.requiresKey === key) next.delete(opt.key);
+        });
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }
+
+  function go() {
+    onAdd({ name, locationUrl }, Array.from(selected));
+    setName('');
+    setLocationUrl('');
+  }
+
+  return (
+    <div className="space-y-2">
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Event name (e.g. Community Game Night)"
+        className="w-full bg-[#122440] border border-[#1f3252] rounded px-2 py-1 text-sm"
+      />
+      <input
+        value={locationUrl}
+        onChange={(e) => setLocationUrl(e.target.value)}
+        placeholder="Location link (optional, e.g. Google Maps)"
+        className="w-full bg-[#122440] border border-[#1f3252] rounded px-2 py-1 text-sm"
+      />
+      <div className="grid grid-cols-2 gap-1">
+        {EVENT_KIT_OPTIONS.map((opt) => {
+          const disabled = !!opt.requiresKey && !selected.has(opt.requiresKey);
+          return (
+            <label key={opt.key} className={`flex items-center gap-1 text-xs ${disabled ? 'opacity-40' : ''}`}>
+              <input
+                type="checkbox"
+                checked={selected.has(opt.key)}
+                disabled={disabled}
+                onChange={() => toggle(opt.key)}
+              />
+              {opt.label}
+            </label>
+          );
+        })}
+      </div>
+      <button
+        onClick={go}
+        disabled={!name.trim() || selected.size === 0}
+        className="px-3 py-1 bg-[#f5a623] text-[#0a1628] rounded text-xs font-bold disabled:opacity-40"
+      >
+        Add to snap
       </button>
     </div>
   );
@@ -1860,6 +2273,36 @@ function BlockPreview({ block, theme, allPageIds = [] }: { block: Block; theme: 
         <span className={`px-2 py-0.5 text-xs rounded ${block.defaultChecked ? 'text-[#0a1628]' : 'text-[#b8c4d4]'}`} style={block.defaultChecked ? { background: accent } : { background: '#1f3252' }}>
           {block.defaultChecked ? 'on' : 'off'}
         </span>
+      </div>
+    );
+  }
+  if (block.type === 'mintButton') {
+    return (
+      <div className="bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 text-center font-medium" style={{ color: accent }}>
+        {block.label}
+        {block.partnerId && <span className="ml-2 text-[10px] text-[#b8c4d4] uppercase">via {block.partnerId}</span>}
+      </div>
+    );
+  }
+  if (block.type === 'coinPost') {
+    return (
+      <div className="bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 space-y-1">
+        <div className="text-xs text-[#b8c4d4]">Coin post{block.postId ? `: ${block.postId}` : ''}</div>
+        <div className="flex gap-2 text-[10px] text-[#b8c4d4]">
+          {block.showPrice && <span>price</span>}
+          {block.showHolders && <span>holders</span>}
+          {block.buyButton && <span style={{ color: accent }}>buy</span>}
+        </div>
+      </div>
+    );
+  }
+  if (block.type === 'leaderboard') {
+    return (
+      <div className="bg-[#0a1628] border border-[#1f3252] rounded px-3 py-2 space-y-1">
+        <div className="font-bold text-sm">{block.title}</div>
+        <div className="text-xs text-[#b8c4d4]">
+          Live results from Poll #{block.pollBlockIdx} (top {block.topN ?? 5}) - no votes yet.
+        </div>
       </div>
     );
   }
